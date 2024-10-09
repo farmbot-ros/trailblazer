@@ -17,10 +17,15 @@ install(
     DESTINATION share/${PROJECT_NAME}
 )
 
-
 install(
     DIRECTORY include/
     DESTINATION include
+)
+
+include_directories(
+  include
+  ${rclcpp_INCLUDE_DIRS}
+  ${std_msgs_INCLUDE_DIRS}
 )
 
 cmake_policy(SET CMP0074 NEW)
@@ -65,6 +70,7 @@ set(dependencies_ros
   farmbot_interfaces
 )
 
+option(BUILD_PYTHON "Build Python SWIG module" OFF)
 FetchContent_Declare(
   Fields2Cover
   GIT_REPOSITORY https://github.com/Fields2Cover/Fields2Cover.git
@@ -73,6 +79,11 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(Fields2Cover)
 # add_subdirectory(${fields2cover_SOURCE_DIR} ${fields2cover_BINARY_DIR})
+set_property(
+    DIRECTORY ${fields2cover_SOURCE_DIR}
+    APPEND
+    PROPERTY COMPILE_OPTIONS -Wno-undef
+)
 
 FetchContent_Declare(
   json 

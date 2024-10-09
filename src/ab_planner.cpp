@@ -1,13 +1,16 @@
 #include "fields2cover.h"
 #include <iostream>
+// #include "farmbot_planner/utils/geojson.hpp"
 
 int main() {
   // Import field
-//   F2CField field = f2c::Parser::importFieldGml("/home/bresilla/FARMBOT/src/farmbot_planner/config/test1.xml");
+  // F2CField field = f2c::Parser::importFieldGml("/home/bresilla/FARMBOT/src/farmbot_planner/config/test1.xml");
 //   F2CField orig_field = field.clone();
 //   // Transform into UTM to work in meters
 //   f2c::Transform::transformToUTM(field);
 //   F2CCells cells = field.getField();
+
+// auto field_parsed = geojson::parseFile("/home/bresilla/FARMBOT/src/farmbot_planner/config/test1.geojson");
 
   F2CCells cells(F2CCell(F2CLinearRing({
         F2CPoint(  0,  0),
