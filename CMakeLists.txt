@@ -18,12 +18,21 @@ install(
 )
 
 
+install(
+    DIRECTORY include/
+    DESTINATION include
+)
+
 cmake_policy(SET CMP0074 NEW)
 
 set(executables
   ab_planner
 )
 
+
+set (utils
+  geojson
+)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -65,6 +74,11 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Fields2Cover)
 # add_subdirectory(${fields2cover_SOURCE_DIR} ${fields2cover_BINARY_DIR})
 
+FetchContent_Declare(
+  json 
+  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
 
 find_package(Eigen3 REQUIRED)
 include_directories(${Eigen_INCLUDE_DIRS})
@@ -76,19 +90,33 @@ find_package(GDAL 3.0 REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
+# FindGeographicLib.cmake is not installed in the default location, so we need to specify the path
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/usr/share/cmake/geographiclib/")
+find_package(GeographicLib REQUIRED)
 
 set(dependencies_sys
   fmt::fmt
   ${PCL_LIBRARIES}
   ${Eigen_LIBRARIES}
   ${GDAL_LIBRARIES}
+  ${GeographicLib_LIBRARIES}
   Fields2Cover
+  nlohmann_json::nlohmann_json
 )
+
+foreach(util ${utils})
+  add_library(${util} src/utils/${util}.cpp)
+  ament_target_dependencies(${util} ${dependencies_ros})
+  target_link_libraries(${util} ${dependencies_sys})
+endforeach()
 
 foreach(executable ${executables})
   add_executable(${executable} src/${executable}.cpp)
   ament_target_dependencies(${executable} ${dependencies_ros})
   target_link_libraries(${executable} ${dependencies_sys})
+  foreach(util ${utils})
+    target_link_libraries(${executable} ${util})
+  endforeach()
 endforeach()
 
 
