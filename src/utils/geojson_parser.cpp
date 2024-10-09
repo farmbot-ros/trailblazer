@@ -1,6 +1,6 @@
 // File: geojson_parser.cpp
 
-#include "farmbot_planner/utils/geojson.hpp"
+#include "farmbot_planner/utils/geojson_parser.hpp"
 
 namespace geojson {
 
