@@ -28,7 +28,7 @@ set(executables
 )
 
 set (utils
-    geojson_parser
+    # geojson
 )
 
 find_package(ament_cmake REQUIRED)
