@@ -1,6 +1,23 @@
+// src/field_processor_node.cpp
+
 #include "fields2cover.h"
 #include <iostream>
 #include "farmbot_planner/utils/geojson.hpp"
+
+// GDAL/OGR Headers
+#include <ogr_spatialref.h>
+#include <ogr_geometry.h>
+#include <ogrsf_frmts.h>
+
+// ROS2 Headers
+#include "rclcpp/rclcpp.hpp"
+
+#include <memory>
+#include <vector>
+#include <string>
+#include <utility>
+#include <optional>
+#include <cmath>
 
 // Function to convert latitude and longitude to UTM coordinates
 std::pair<double, double> latLonToUTM(double lat, double lon, 
@@ -31,7 +48,9 @@ std::pair<double, double> latLonToUTM(double lat, double lon,
 
     // Create the point and transform it
     OGRPoint point(lon, lat);
-    point.transform(transform.get());
+    if (!point.transform(transform.get())) {
+        throw std::runtime_error("Failed to transform point.");
+    }
 
     // Get the absolute UTM coordinates (easting, northing)
     double easting = point.getX();
@@ -46,59 +65,84 @@ std::pair<double, double> latLonToUTM(double lat, double lon,
     return {easting, northing};
 }
 
-int main() {
-    std::string filename = "/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson";
+class FieldProcessorNode : public rclcpp::Node {
+    private:
+        std::string geojson_file_;
+        
+    public:
+        FieldProcessorNode() : Node("field_processor_node") {
+            // Declare and get parameters
+            this->declare_parameter<std::string>("geojson_file", "/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson");
+            this->get_parameter("geojson_file", geojson_file_);
 
-    std::vector<std::vector<double>> points;
-    try {
-        auto geojsonObject = geojson::parseGeoJSONFromFile(filename);
-        points = geojson::utils::getFirstRing(geojsonObject); 
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-    }
+            // Initialize GDAL/OGR
+            OGRRegisterAll();
 
-    auto ref_utm_coords = latLonToUTM(points[0][1], points[0][0]);
+            // Process the field
+            try {
+                process_field();
+            } catch (const std::exception& e) {
+                RCLCPP_ERROR(this->get_logger(), "Error: %s", e.what());
+            }
+        }
 
-    F2CLinearRing ring;
-    for (auto point : points) {
-        auto transformed_point = latLonToUTM(point[1], point[0], "WGS84", ref_utm_coords);
-        ring.addPoint(F2CPoint(transformed_point.first, transformed_point.second));
-        std::cout << transformed_point.first << " " << transformed_point.second << std::endl;
-    }
-    F2CCells cells(F2CCell{ring});
+    private:
+        void process_field() {
+            std::vector<std::vector<double>> points;
+            try {
+                auto geojsonObject = geojson::parseGeoJSONFromFile(geojson_file_);
+                points = geojson::utils::extractFirstPolygon(geojsonObject);
+            } catch (const std::exception& e) {
+                RCLCPP_ERROR(this->get_logger(), "Error parsing GeoJSON: %s", e.what());
+                return;
+            }
 
+            if (points.empty()) {
+                RCLCPP_ERROR(this->get_logger(), "No points found in the GeoJSON file.");
+                return;
+            }
 
-    // F2CCells cells(cell);
-    F2CRobot robot (2, 15);
-    f2c::hg::ConstHL const_hl;
-    F2CCells no_hl = const_hl.generateHeadlands(cells, 3.0 * robot.getWidth());
-    f2c::sg::BruteForce bf;
-    F2CSwaths swaths = bf.generateSwaths(M_PI/1.32, robot.getCovWidth(), no_hl.getGeometry(0));
-    f2c::rp::SnakeOrder snake_sorter;
-    swaths = snake_sorter.genSortedSwaths(swaths);
-    f2c::pp::PathPlanning path_planner;
-    robot.setMinTurningRadius(2);  // m
-    f2c::pp::DubinsCurves dubins;
-    F2CPath path = path_planner.planPath(robot, swaths, dubins);
+            // Convert reference point to UTM
+            auto ref_utm_coords = latLonToUTM(points[0][1], points[0][0]);
 
+            F2CLinearRing ring;
+            for (const auto& point : points) {
+                auto transformed_point = latLonToUTM(point[1], point[0], "WGS84", ref_utm_coords);
+                ring.addPoint(F2CPoint(transformed_point.first, transformed_point.second));
+                RCLCPP_INFO(this->get_logger(), "Transformed Point: [%f, %f]", transformed_point.first, transformed_point.second);
+            }
+            F2CCells cells(F2CCell{ring});
 
-    f2c::Visualizer::figure();
-    f2c::Visualizer::plot(cells);
-    f2c::Visualizer::plot(no_hl);
-    f2c::Visualizer::plot(path);
-    f2c::Visualizer::figure_size(2400, 2400);
-    f2c::Visualizer::save("Tutorial_8_1_UTM.png");
+            F2CRobot robot(2, 15);
+            f2c::hg::ConstHL const_hl;
+            F2CCells no_hl = const_hl.generateHeadlands(cells, 3.0 * robot.getWidth());
 
+            f2c::sg::BruteForce bf;
+            F2CSwaths swaths = bf.generateSwaths(M_PI / 1.32, robot.getCovWidth(), no_hl.getGeometry(0));
 
-    //   // Transform the generated path back to the previousa CRS.
-    //   F2CPath path_gps = f2c::Transform::transformToPrevCRS(path, field);
-    //   f2c::Transform::transformToPrevCRS(field);
+            f2c::rp::SnakeOrder snake_sorter;
+            swaths = snake_sorter.genSortedSwaths(swaths);
 
-    //   f2c::Visualizer::figure();
-    //   f2c::Visualizer::plot(orig_field.getCellsAbsPosition());
-    //   f2c::Visualizer::plot(path_gps);
-    //   f2c::Visualizer::save("Tutorial_8_1_GPS.png");
+            f2c::pp::PathPlanning path_planner;
+            robot.setMinTurningRadius(2);  // m
+            f2c::pp::DubinsCurves dubins;
+            F2CPath path = path_planner.planPath(robot, swaths, dubins);
 
+            f2c::Visualizer::figure();
+            f2c::Visualizer::plot(cells);
+            f2c::Visualizer::plot(no_hl);
+            f2c::Visualizer::plot(path);
+            f2c::Visualizer::figure_size(2400, 2400);
+            f2c::Visualizer::save("Tutorial_8_1_UTM.png");
 
-  return 0;
+            RCLCPP_INFO(this->get_logger(), "Field processing completed and visualization saved.");
+        }
+};
+
+int main(int argc, char* argv[]) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<FieldProcessorNode>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
 }

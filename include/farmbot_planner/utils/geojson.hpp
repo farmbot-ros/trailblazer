@@ -9,6 +9,8 @@
 #include <sstream>
 #include <fstream> 
 #include <iostream>
+#include <cmath>    // For std::isnan
+#include <limits>   // For std::numeric_limits<double>::quiet_NaN()
 
 namespace geojson {
 
@@ -25,7 +27,21 @@ namespace geojson {
     class Feature;
     class FeatureCollection;
 
-    // JSON Value class remains the same
+    // Coordinate struct
+    struct Coordinate {
+        double x;
+        double y;
+        double z; // Optional z-coordinate, NaN if not present
+
+        Coordinate(double x_, double y_) : x(x_), y(y_), z(std::numeric_limits<double>::quiet_NaN()) {}
+        Coordinate(double x_, double y_, double z_) : x(x_), y(y_), z(z_) {}
+
+        bool hasZ() const {
+            return !std::isnan(z);
+        }
+    };
+
+    // JSON Value class
     class Value {
     public:
         enum class Type {
@@ -90,7 +106,7 @@ namespace geojson {
         std::map<std::string, Value> _object_value;
     };
 
-    // JSON Parser class remains the same
+    // JSON Parser class
     class JSONParser {
     public:
         JSONParser(const std::string& input) : _input(input), _pos(0) {}
@@ -392,81 +408,79 @@ namespace geojson {
     // Point class
     class Point : public Geometry {
     public:
-        Point(double x, double y) : _x(x), _y(y) {}
+        Point(const Coordinate& coord) : _coordinate(coord) {}
 
         Type type() const override { return Type::Point; }
 
-        double x() const { return _x; }
-        double y() const { return _y; }
+        const Coordinate& coordinate() const { return _coordinate; }
 
     private:
-        double _x;
-        double _y;
+        Coordinate _coordinate;
     };
 
     // MultiPoint class
     class MultiPoint : public Geometry {
     public:
-        MultiPoint(const std::vector<std::pair<double, double>>& points) : _points(points) {}
+        MultiPoint(const std::vector<Coordinate>& points) : _points(points) {}
 
         Type type() const override { return Type::MultiPoint; }
 
-        const std::vector<std::pair<double, double>>& points() const { return _points; }
+        const std::vector<Coordinate>& points() const { return _points; }
 
     private:
-        std::vector<std::pair<double, double>> _points;
+        std::vector<Coordinate> _points;
     };
 
     // LineString class
     class LineString : public Geometry {
     public:
-        LineString(const std::vector<std::pair<double, double>>& points) : _points(points) {}
+        LineString(const std::vector<Coordinate>& points) : _points(points) {}
 
         Type type() const override { return Type::LineString; }
 
-        const std::vector<std::pair<double, double>>& points() const { return _points; }
+        const std::vector<Coordinate>& points() const { return _points; }
 
     private:
-        std::vector<std::pair<double, double>> _points;
+        std::vector<Coordinate> _points;
     };
 
     // MultiLineString class
     class MultiLineString : public Geometry {
     public:
-        MultiLineString(const std::vector<std::vector<std::pair<double, double>>>& lines) : _lines(lines) {}
+        MultiLineString(const std::vector<std::vector<Coordinate>>& lines) : _lines(lines) {}
 
         Type type() const override { return Type::MultiLineString; }
 
-        const std::vector<std::vector<std::pair<double, double>>>& lines() const { return _lines; }
+        const std::vector<std::vector<Coordinate>>& lines() const { return _lines; }
 
     private:
-        std::vector<std::vector<std::pair<double, double>>> _lines;
+        std::vector<std::vector<Coordinate>> _lines;
     };
 
     // Polygon class
     class Polygon : public Geometry {
     public:
-        Polygon(const std::vector<std::vector<std::pair<double, double>>>& rings) : _rings(rings) {}
+        Polygon(const std::vector<std::vector<Coordinate>>& rings) : _rings(rings) {}
 
         Type type() const override { return Type::Polygon; }
 
-        const std::vector<std::vector<std::pair<double, double>>>& rings() const { return _rings; }
+        const std::vector<std::vector<Coordinate>>& rings() const { return _rings; }
 
     private:
-        std::vector<std::vector<std::pair<double, double>>> _rings;
+        std::vector<std::vector<Coordinate>> _rings;
     };
 
     // MultiPolygon class
     class MultiPolygon : public Geometry {
     public:
-        MultiPolygon(const std::vector<std::vector<std::vector<std::pair<double, double>>>>& polygons) : _polygons(polygons) {}
+        MultiPolygon(const std::vector<std::vector<std::vector<Coordinate>>>& polygons) : _polygons(polygons) {}
 
         Type type() const override { return Type::MultiPolygon; }
 
-        const std::vector<std::vector<std::vector<std::pair<double, double>>>>& polygons() const { return _polygons; }
+        const std::vector<std::vector<std::vector<Coordinate>>>& polygons() const { return _polygons; }
 
     private:
-        std::vector<std::vector<std::vector<std::pair<double, double>>>> _polygons;
+        std::vector<std::vector<std::vector<Coordinate>>> _polygons;
     };
 
     // GeometryCollection class
@@ -529,7 +543,14 @@ namespace geojson {
         }
         double x = coords[0].asNumber();
         double y = coords[1].asNumber();
-        return std::make_shared<Point>(x, y);
+        if (coords.size() >= 3) {
+            double z = coords[2].asNumber();
+            Coordinate coord(x, y, z);
+            return std::make_shared<Point>(coord);
+        } else {
+            Coordinate coord(x, y);
+            return std::make_shared<Point>(coord);
+        }
     }
 
     inline std::shared_ptr<MultiPoint> parseMultiPoint(const Value& coordinates) {
@@ -537,7 +558,7 @@ namespace geojson {
             throw std::runtime_error("MultiPoint coordinates must be an array");
         }
         const auto& coords_array = coordinates.asArray();
-        std::vector<std::pair<double, double>> points;
+        std::vector<Coordinate> points;
         for (const auto& coord_value : coords_array) {
             if (!coord_value.isArray()) {
                 throw std::runtime_error("Coordinate must be an array");
@@ -548,7 +569,12 @@ namespace geojson {
             }
             double x = coord[0].asNumber();
             double y = coord[1].asNumber();
-            points.emplace_back(x, y);
+            if (coord.size() >= 3) {
+                double z = coord[2].asNumber();
+                points.emplace_back(x, y, z);
+            } else {
+                points.emplace_back(x, y);
+            }
         }
         return std::make_shared<MultiPoint>(points);
     }
@@ -558,7 +584,7 @@ namespace geojson {
             throw std::runtime_error("LineString coordinates must be an array");
         }
         const auto& coords_array = coordinates.asArray();
-        std::vector<std::pair<double, double>> points;
+        std::vector<Coordinate> points;
         for (const auto& coord_value : coords_array) {
             if (!coord_value.isArray()) {
                 throw std::runtime_error("Coordinate must be an array");
@@ -569,7 +595,12 @@ namespace geojson {
             }
             double x = coord[0].asNumber();
             double y = coord[1].asNumber();
-            points.emplace_back(x, y);
+            if (coord.size() >= 3) {
+                double z = coord[2].asNumber();
+                points.emplace_back(x, y, z);
+            } else {
+                points.emplace_back(x, y);
+            }
         }
         return std::make_shared<LineString>(points);
     }
@@ -579,13 +610,13 @@ namespace geojson {
             throw std::runtime_error("MultiLineString coordinates must be an array");
         }
         const auto& lines_array = coordinates.asArray();
-        std::vector<std::vector<std::pair<double, double>>> lines;
+        std::vector<std::vector<Coordinate>> lines;
         for (const auto& line_value : lines_array) {
             if (!line_value.isArray()) {
                 throw std::runtime_error("Line must be an array");
             }
             const auto& coords_array = line_value.asArray();
-            std::vector<std::pair<double, double>> points;
+            std::vector<Coordinate> points;
             for (const auto& coord_value : coords_array) {
                 if (!coord_value.isArray()) {
                     throw std::runtime_error("Coordinate must be an array");
@@ -596,7 +627,12 @@ namespace geojson {
                 }
                 double x = coord[0].asNumber();
                 double y = coord[1].asNumber();
-                points.emplace_back(x, y);
+                if (coord.size() >= 3) {
+                    double z = coord[2].asNumber();
+                    points.emplace_back(x, y, z);
+                } else {
+                    points.emplace_back(x, y);
+                }
             }
             lines.push_back(points);
         }
@@ -608,13 +644,13 @@ namespace geojson {
             throw std::runtime_error("Polygon coordinates must be an array");
         }
         const auto& rings_array = coordinates.asArray();
-        std::vector<std::vector<std::pair<double, double>>> rings;
+        std::vector<std::vector<Coordinate>> rings;
         for (const auto& ring_value : rings_array) {
             if (!ring_value.isArray()) {
                 throw std::runtime_error("Ring must be an array");
             }
             const auto& coords_array = ring_value.asArray();
-            std::vector<std::pair<double, double>> points;
+            std::vector<Coordinate> points;
             for (const auto& coord_value : coords_array) {
                 if (!coord_value.isArray()) {
                     throw std::runtime_error("Coordinate must be an array");
@@ -625,7 +661,12 @@ namespace geojson {
                 }
                 double x = coord[0].asNumber();
                 double y = coord[1].asNumber();
-                points.emplace_back(x, y);
+                if (coord.size() >= 3) {
+                    double z = coord[2].asNumber();
+                    points.emplace_back(x, y, z);
+                } else {
+                    points.emplace_back(x, y);
+                }
             }
             rings.push_back(points);
         }
@@ -637,19 +678,19 @@ namespace geojson {
             throw std::runtime_error("MultiPolygon coordinates must be an array");
         }
         const auto& polygons_array = coordinates.asArray();
-        std::vector<std::vector<std::vector<std::pair<double, double>>>> polygons;
+        std::vector<std::vector<std::vector<Coordinate>>> polygons;
         for (const auto& polygon_value : polygons_array) {
             if (!polygon_value.isArray()) {
                 throw std::runtime_error("Polygon must be an array");
             }
             const auto& rings_array = polygon_value.asArray();
-            std::vector<std::vector<std::pair<double, double>>> rings;
+            std::vector<std::vector<Coordinate>> rings;
             for (const auto& ring_value : rings_array) {
                 if (!ring_value.isArray()) {
                     throw std::runtime_error("Ring must be an array");
                 }
                 const auto& coords_array = ring_value.asArray();
-                std::vector<std::pair<double, double>> points;
+                std::vector<Coordinate> points;
                 for (const auto& coord_value : coords_array) {
                     if (!coord_value.isArray()) {
                         throw std::runtime_error("Coordinate must be an array");
@@ -660,7 +701,12 @@ namespace geojson {
                     }
                     double x = coord[0].asNumber();
                     double y = coord[1].asNumber();
-                    points.emplace_back(x, y);
+                    if (coord.size() >= 3) {
+                        double z = coord[2].asNumber();
+                        points.emplace_back(x, y, z);
+                    } else {
+                        points.emplace_back(x, y);
+                    }
                 }
                 rings.push_back(points);
             }
@@ -851,7 +897,7 @@ namespace geojson {
         }
     }
 
-    // New function to read a file's contents into a string remains the same
+    // Function to read a file's contents into a string
     inline std::string readFileContents(const std::string& filename) {
         std::ifstream file(filename);
         if (!file.is_open()) {
@@ -863,27 +909,36 @@ namespace geojson {
         return oss.str();
     }
 
-    // New function to parse GeoJSON from a file, returning GeoJSONObject
+    // Function to parse GeoJSON from a file, returning GeoJSONObject
     inline std::shared_ptr<GeoJSONObject> parseGeoJSONFromFile(const std::string& filename) {
         std::string jsonStr = readFileContents(filename);
         return parseGeoJSON(jsonStr);
     }
 
-     // Function to print Geometry
+    // Function to print Geometry
     void printGeometry(const std::shared_ptr<geojson::Geometry>& geometry) {
         using Type = geojson::Geometry::Type;
 
         switch (geometry->type()) {
             case Type::Point: {
                 auto point = std::static_pointer_cast<geojson::Point>(geometry);
-                std::cout << "Point: (" << point->x() << ", " << point->y() << ")" << std::endl;
+                const auto& coord = point->coordinate();
+                std::cout << "Point: (" << coord.x << ", " << coord.y;
+                if (coord.hasZ()) {
+                    std::cout << ", " << coord.z;
+                }
+                std::cout << ")" << std::endl;
                 break;
             }
             case Type::MultiPoint: {
                 auto multipoint = std::static_pointer_cast<geojson::MultiPoint>(geometry);
                 std::cout << "MultiPoint:" << std::endl;
                 for (const auto& coord : multipoint->points()) {
-                    std::cout << "(" << coord.first << ", " << coord.second << ")" << std::endl;
+                    std::cout << "(" << coord.x << ", " << coord.y;
+                    if (coord.hasZ()) {
+                        std::cout << ", " << coord.z;
+                    }
+                    std::cout << ")" << std::endl;
                 }
                 break;
             }
@@ -891,7 +946,11 @@ namespace geojson {
                 auto line = std::static_pointer_cast<geojson::LineString>(geometry);
                 std::cout << "LineString:" << std::endl;
                 for (const auto& coord : line->points()) {
-                    std::cout << "(" << coord.first << ", " << coord.second << ")" << std::endl;
+                    std::cout << "(" << coord.x << ", " << coord.y;
+                    if (coord.hasZ()) {
+                        std::cout << ", " << coord.z;
+                    }
+                    std::cout << ")" << std::endl;
                 }
                 break;
             }
@@ -902,7 +961,11 @@ namespace geojson {
                 for (const auto& line : multiline->lines()) {
                     std::cout << "Line " << lineIndex++ << ":" << std::endl;
                     for (const auto& coord : line) {
-                        std::cout << "(" << coord.first << ", " << coord.second << ")" << std::endl;
+                        std::cout << "(" << coord.x << ", " << coord.y;
+                        if (coord.hasZ()) {
+                            std::cout << ", " << coord.z;
+                        }
+                        std::cout << ")" << std::endl;
                     }
                 }
                 break;
@@ -914,7 +977,11 @@ namespace geojson {
                 for (const auto& ring : polygon->rings()) {
                     std::cout << "Ring " << ringIndex++ << ":" << std::endl;
                     for (const auto& coord : ring) {
-                        std::cout << "(" << coord.first << ", " << coord.second << ")" << std::endl;
+                        std::cout << "(" << coord.x << ", " << coord.y;
+                        if (coord.hasZ()) {
+                            std::cout << ", " << coord.z;
+                        }
+                        std::cout << ")" << std::endl;
                     }
                 }
                 break;
@@ -929,7 +996,11 @@ namespace geojson {
                     for (const auto& ring : polygon) {
                         std::cout << "  Ring " << ringIndex++ << ":" << std::endl;
                         for (const auto& coord : ring) {
-                            std::cout << "    (" << coord.first << ", " << coord.second << ")" << std::endl;
+                            std::cout << "    (" << coord.x << ", " << coord.y;
+                            if (coord.hasZ()) {
+                                std::cout << ", " << coord.z;
+                            }
+                            std::cout << ")" << std::endl;
                         }
                     }
                 }
@@ -976,6 +1047,10 @@ namespace geojson {
                         std::cout << prop.second.asString() << std::endl;
                     } else if (prop.second.isNumber()) {
                         std::cout << prop.second.asNumber() << std::endl;
+                    } else if (prop.second.isBoolean()) {
+                        std::cout << (prop.second.asBool() ? "true" : "false") << std::endl;
+                    } else if (prop.second.isNull()) {
+                        std::cout << "null" << std::endl;
                     } else {
                         std::cout << "[Unsupported property type]" << std::endl;
                     }
@@ -1001,19 +1076,92 @@ namespace geojson {
         }
     }
 
-    namespace utils{
-        std::vector<std::vector<double>> getFirstRing(const std::shared_ptr<GeoJSONObject>& obj){
-            std::vector<std::vector<double>> ring;
-            if (obj->objectType() == GeoJSONObject::ObjectType::Geometry){
-                auto geometry = std::static_pointer_cast<Geometry>(obj);
-                if (geometry->type() == Geometry::Type::Polygon){
-                    auto polygon = std::static_pointer_cast<Polygon>(geometry);
-                    for (const auto& coord : polygon->rings()[0]){
-                        ring.push_back({coord.first, coord.second});
+    namespace utils {
+        std::vector<std::vector<double>> extractFirstPolygon(
+            const std::shared_ptr<geojson::GeoJSONObject>& obj
+        ) {
+            using ObjectType = geojson::GeoJSONObject::ObjectType;
+            using GeometryType = geojson::Geometry::Type;
+
+            std::vector<std::vector<double>> coordinates;
+
+
+            if (obj->objectType() == ObjectType::FeatureCollection) {
+                auto featureCollection = std::static_pointer_cast<geojson::FeatureCollection>(obj);
+                if (!featureCollection->features().empty()) {
+                    auto feature = featureCollection->features().front();
+                    auto geometry = feature->geometry();
+                    if (geometry && geometry->type() == GeometryType::Polygon) {
+                        auto polygon = std::static_pointer_cast<geojson::Polygon>(geometry);
+                        // Get the first ring
+                        if (!polygon->rings().empty()) {
+                            const auto& ring = polygon->rings().front();
+                            for (const auto& coord : ring) {
+                                std::vector<double> point;
+                                point.push_back(coord.y); // Latitude
+                                point.push_back(coord.x); // Longitude
+                                if (coord.hasZ()) {
+                                    point.push_back(coord.z); // Altitude
+                                }
+                                coordinates.push_back(point);
+                            }
+                        } else {
+                            throw std::runtime_error("Polygon has no rings");
+                        }
+                    } else {
+                        throw std::runtime_error("First feature does not contain a Polygon geometry");
                     }
+                } else {
+                    throw std::runtime_error("FeatureCollection is empty");
                 }
+            } else if (obj->objectType() == ObjectType::Feature) {
+                auto feature = std::static_pointer_cast<geojson::Feature>(obj);
+                auto geometry = feature->geometry();
+                if (geometry && geometry->type() == GeometryType::Polygon) {
+                    auto polygon = std::static_pointer_cast<geojson::Polygon>(geometry);
+                    if (!polygon->rings().empty()) {
+                        const auto& ring = polygon->rings().front();
+                        for (const auto& coord : ring) {
+                            std::vector<double> point;
+                            point.push_back(coord.y); // Latitude
+                            point.push_back(coord.x); // Longitude
+                            if (coord.hasZ()) {
+                                point.push_back(coord.z); // Altitude
+                            }
+                            coordinates.push_back(point);
+                        }
+                    } else {
+                        throw std::runtime_error("Polygon has no rings");
+                    }
+                } else {
+                    throw std::runtime_error("Feature does not contain a Polygon geometry");
+                }
+            } else if (obj->objectType() == ObjectType::Geometry) {
+                auto geometry = std::static_pointer_cast<geojson::Geometry>(obj);
+                if (geometry->type() == GeometryType::Polygon) {
+                    auto polygon = std::static_pointer_cast<geojson::Polygon>(geometry);
+                    if (!polygon->rings().empty()) {
+                        const auto& ring = polygon->rings().front();
+                        for (const auto& coord : ring) {
+                            std::vector<double> point;
+                            point.push_back(coord.y); // Latitude
+                            point.push_back(coord.x); // Longitude
+                            if (coord.hasZ()) {
+                                point.push_back(coord.z); // Altitude
+                            }
+                            coordinates.push_back(point);
+                        }
+                    } else {
+                        throw std::runtime_error("Polygon has no rings");
+                    }
+                } else {
+                    throw std::runtime_error("Geometry is not a Polygon");
+                }
+            } else {
+                throw std::runtime_error("Unsupported GeoJSONObject type");
             }
-            return ring;
+
+            return coordinates;
         }
     }
 
