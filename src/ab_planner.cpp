@@ -4,6 +4,7 @@
 
 // ROS2 Headers
 #include "rclcpp/rclcpp.hpp"
+#include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 
@@ -32,10 +33,13 @@ private:
     f2c::pp::DubinsCurves dubins_;
 
 public:
-    FieldProcessorNode() : Node("field_processor_node"), robot_(0.5, 1) {
+    FieldProcessorNode() : Node("field_processor_node") {
         // Declare and get parameters
         this->declare_parameter<std::string>("geojson_file", "/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson");
         this->get_parameter("geojson_file", geojson_file_);
+
+        robot_.setWidth(3.0);
+        robot_.setCovWidth(1.0);
 
         // Create the service client
         gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("/fb/loc/gps2enu");
@@ -72,8 +76,8 @@ private:
 
         // Use the first point as the reference for the datum
         sensor_msgs::msg::NavSatFix ref_point;
-        ref_point.latitude = points[0][1];
-        ref_point.longitude = points[0][0];
+        ref_point.latitude = points[0][0];
+        ref_point.longitude = points[0][1];
         ref_point.altitude = 0.0;  // Set to 0 or any relevant altitude
 
         // Prepare the request for GPS to ENU conversion
@@ -82,8 +86,8 @@ private:
 
         for (const auto& point : points) {
             sensor_msgs::msg::NavSatFix gps_point;
-            gps_point.latitude = point[1];
-            gps_point.longitude = point[0];
+            gps_point.latitude = point[0];
+            gps_point.longitude = point[1];
             gps_point.altitude = 0.0;  // Adjust if altitude data is available
             request->gps.push_back(gps_point);
         }
@@ -92,7 +96,7 @@ private:
             RCLCPP_INFO(this->get_logger(), "Waiting for GPS to ENU conversion service...");
         } 
 
-        auto state_result = gps2enu_client_->async_send_request(request, [this, request](rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedFuture future) {
+        auto state_result = gps2enu_client_->async_send_request(request, [this, request, points](rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedFuture future) {
             auto response = future.get();
             process_enu_points(response->enu);
             RCLCPP_INFO(this->get_logger(), "Field processing completed.");
@@ -119,7 +123,6 @@ private:
         ring_ = F2CLinearRing();
         for (const auto& enu_point : enu_points) {
             ring_.addPoint(F2CPoint(enu_point.position.x, enu_point.position.y));
-            RCLCPP_INFO(this->get_logger(), "Transformed Point: [%f, %f]", enu_point.position.x, enu_point.position.y);
         }
 
         cells_ = F2CCells(F2CCell{ring_});
@@ -128,18 +131,27 @@ private:
         F2CCells no_hl = const_hl.generateHeadlands(cells_, 3.0 * robot_.getWidth());
 
         f2c::sg::BruteForce bf;
-        F2CSwaths swaths = bf.generateSwaths(M_PI / 1.32, robot_.getCovWidth(), no_hl.getGeometry(0));
+        F2CSwathsByCells swaths = bf.generateSwaths(M_PI/2.0, robot_.getCovWidth(), no_hl);
 
-        f2c::rp::SnakeOrder snake_sorter;
-        swaths = snake_sorter.genSortedSwaths(swaths);
+        f2c::rp::RoutePlannerBase route_planner;
+        F2CRoute route = route_planner.genRoute(no_hl, swaths);
 
-        robot_.setMinTurningRadius(2);  // m
-        F2CPath path = path_planner_.planPath(robot_, swaths, dubins_);
+
+        for (auto& line : route.getVectorSwaths()) {
+            for (auto& sw : line) {
+                double x1 = sw.startPoint().X();
+                double y1 = sw.startPoint().Y();
+                double x2 = sw.endPoint().X();
+                double y2 = sw.endPoint().Y();
+                std::cout << "Swath: " << x1 << ", " << y1 << " -> " << x2 << ", " << y2 << std::endl;
+            }
+        }
+
 
         f2c::Visualizer::figure();
         f2c::Visualizer::plot(cells_);
         f2c::Visualizer::plot(no_hl);
-        f2c::Visualizer::plot(path);
+        f2c::Visualizer::plot(route);
         f2c::Visualizer::figure_size(2400, 2400);
         f2c::Visualizer::save("Tutorial_8_1_ENU.png");
 
