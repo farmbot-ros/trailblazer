@@ -197,6 +197,35 @@ namespace field {
                 return polygon;
             }
 
+            std::pair<geometry_msgs::msg::PolygonStamped, geometry_msgs::msg::PolygonStamped> get_polygons() {
+                geometry_msgs::msg::PolygonStamped outer;
+                geometry_msgs::msg::PolygonStamped inner;
+                outer.header.frame_id = "map";
+                outer.header.stamp = rclcpp::Clock().now();
+                inner.header = outer.header;
+                for (const auto& cell : field_) {
+                    for (const auto& ring : cell) {
+                        for (const auto& point : ring) {
+                            geometry_msgs::msg::Point32 p;
+                            p.x = point.X();
+                            p.y = point.Y();
+                            outer.polygon.points.push_back(p);
+                        }
+                    }
+                }
+                for (const auto& cell : head_) {
+                    for (const auto& ring : cell) {
+                        for (const auto& point : ring) {
+                            geometry_msgs::msg::Point32 p;
+                            p.x = point.X();
+                            p.y = point.Y();
+                            inner.polygon.points.push_back(p);
+                        }
+                    }
+                }
+                return std::make_pair(outer, inner);
+            }
+
     };
 
 } // namespace field

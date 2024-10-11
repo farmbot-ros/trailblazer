@@ -146,7 +146,7 @@ private:
         auto path = field_.gen_path(enu_points);
         farmbot_interfaces::msg::Segments segments = field_.gen_segments(path);
         path_ = field_.gen_path_msg(path);
-        outer_polygon_ = field_.gen_polygon();
+        std::tie(outer_polygon_, inner_polygon_) = field_.get_polygons();
         RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
     }
 };
