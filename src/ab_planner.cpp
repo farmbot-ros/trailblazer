@@ -55,7 +55,7 @@ public:
         this->declare_parameter<std::string>("geojson_file", "/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson");
         this->get_parameter("geojson_file", geojson_file_);
 
-        field_ = field::Field(0.5, 3.0, 0.1);
+        field_ = field::Field(0.5, 3.0, 0.1, 90);
 
         // Create the service client
         gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("/fb/loc/gps2enu");

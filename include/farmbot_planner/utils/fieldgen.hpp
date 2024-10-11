@@ -24,6 +24,16 @@ using namespace std::chrono_literals;
 
 namespace field {
 
+        // Function to convert degrees to radians
+    double toRadians(double degrees) {
+        return degrees * M_PI / 180.0;
+    }
+
+    // Function to convert radians to degrees
+    double toDegrees(double radians) {
+        return radians * 180.0 / M_PI;
+    }
+
     struct PathSegment {
         std::pair<double, double> start;
         std::pair<double, double> end;
@@ -39,15 +49,21 @@ namespace field {
             F2CRoute route_;
             F2CPath path_;
             double finness_; 
+            int angle_;
         
         public:
             Field() {}
             ~Field() {}
 
-            Field(double width, double cov_width, double finness) {
+            Field(double width, double cov_width, double finness, double angle = 90) {
                 vehicle_.setWidth(width);
                 vehicle_.setCovWidth(cov_width);
                 finness_ = finness;
+                if (angle < 0 || angle > 180) {
+                    angle_ = 90;
+                } else {
+                    angle_ = angle;
+                }
             }
 
             void vehicle_params(double width, double cov_width, double finness) {
@@ -69,7 +85,7 @@ namespace field {
                 head_ = const_hl.generateHeadlands(field_, 3.0 * vehicle_.getWidth());
                 // Generate waaths
                 f2c::sg::BruteForce bf;
-                F2CSwathsByCells swaths = bf.generateSwaths(M_PI, vehicle_.getCovWidth(), head_);
+                F2CSwathsByCells swaths = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_);
                 // Generate the route
                 f2c::rp::RoutePlannerBase route_planner;
                 route_ = route_planner.genRoute(head_, swaths);
