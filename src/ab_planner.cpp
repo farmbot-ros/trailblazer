@@ -145,7 +145,7 @@ private:
         F2CCells no_hl = const_hl.generateHeadlands(cells_, 3.0 * robot_.getWidth());
 
         f2c::sg::BruteForce bf;
-        F2CSwathsByCells swaths = bf.generateSwaths(M_PI/2.0, robot_.getCovWidth(), no_hl);
+        F2CSwathsByCells swaths = bf.generateSwaths(M_PI, robot_.getCovWidth(), no_hl);
 
         f2c::rp::RoutePlannerBase route_planner;
         F2CRoute route = route_planner.genRoute(no_hl, swaths);
