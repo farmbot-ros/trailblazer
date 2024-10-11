@@ -30,8 +30,6 @@ namespace field {
 
     class Field {
         private:
-            farmbot_interfaces::msg::Segments segments_;
-
             F2CCells field_;
             F2CCells head_;
             F2CRobot vehicle_;
@@ -122,6 +120,7 @@ namespace field {
             }
 
             farmbot_interfaces::msg::Segments gen_segments(const std::vector<field::PathSegment>& pathSegments) {
+                auto segments_ = farmbot_interfaces::msg::Segments();
                 for (const auto& segment : pathSegments) {
                     farmbot_interfaces::msg::Segment seg;
                     seg.origin.pose.position.x = segment.start.first;
@@ -137,6 +136,19 @@ namespace field {
                     segments_.segments.push_back(seg);
                 }
                 return segments_;
+            }
+
+            nav_msgs::msg::Path gen_path_msg(const F2CPath& path) {
+                nav_msgs::msg::Path path_msg;
+                path_msg.header.frame_id = "map";
+                path_msg.header.stamp = rclcpp::Clock().now();
+                for (const auto& state : path) {
+                    geometry_msgs::msg::PoseStamped pose;
+                    pose.pose.position.x = state.point.X();
+                    pose.pose.position.y = state.point.Y();
+                    path_msg.poses.push_back(pose);
+                }
+                return path_msg;
             }
 
             farmbot_interfaces::msg::Segments gen_segments(const F2CPath& path) {

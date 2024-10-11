@@ -30,10 +30,11 @@ private:
 
     field::Field field_;
     farmbot_interfaces::msg::Segments segments_;
+    nav_msgs::msg::Path path_;
 
     std::string geojson_file_;
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
-    rclcpp::Service<farmbot_interfaces::srv::Gps2Enu>::SharedPtr field_service_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
     bool service_started_ = false;
     rclcpp::TimerBase::SharedPtr service_start_timer_;
     bool planner_initialized_ = false;
@@ -51,6 +52,9 @@ public:
         // Create the service client
         gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("/fb/loc/gps2enu");
 
+        // Create the path publisher
+        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("/fb/pla/path", 10);
+
         // Timers
         service_start_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_service_start_timer, this));
         planner_init_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_planner_init_timer, this));
@@ -62,7 +66,7 @@ private:
             RCLCPP_INFO(this->get_logger(), "Waiting for GPS to ENU conversion service...");
         } else {
             service_started_ = true;
-            service_start_timer_->cancel();
+            path_publisher_->publish(path_);
         }
     }
 
@@ -129,6 +133,7 @@ private:
 
         auto path = field_.gen_path(enu_points);
         farmbot_interfaces::msg::Segments segments = field_.gen_segments(path);
+        path_ = field_.gen_path_msg(path);
         field_.visualizePath("path.png");
 
         RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
