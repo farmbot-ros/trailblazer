@@ -1,8 +1,13 @@
-#include "fields2cover.h"
+#include <memory>
+#include <vector>
+#include <string>
+#include <utility>
+#include <chrono>
 #include <iostream>
+#include "fields2cover.h"
 #include "farmbot_planner/utils/geojson.hpp"
+#include "farmbot_planner/utils/fieldgen.hpp"
 
-// ROS2 Headers
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
@@ -11,12 +16,6 @@
 #include "farmbot_interfaces/msg/waypoint.hpp"
 #include "farmbot_interfaces/msg/segment.hpp"
 #include "farmbot_interfaces/msg/segments.hpp"
-
-#include <memory>
-#include <vector>
-#include <string>
-#include <utility>
-#include <chrono>
 
 using namespace std::chrono_literals;
 
@@ -28,6 +27,10 @@ struct PathSegment {
 
 class FieldProcessorNode : public rclcpp::Node {
 private:
+
+    field::Field field_;
+    farmbot_interfaces::msg::Segments segments_;
+
     std::string geojson_file_;
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
     bool service_started_ = false;
@@ -35,15 +38,6 @@ private:
     bool planner_initialized_ = false;
     rclcpp::TimerBase::SharedPtr planner_init_timer_;
 
-    farmbot_interfaces::msg::Segment segment_;
-
-    // Moved variables
-    F2CLinearRing ring_;
-    F2CCells cells_;
-    F2CRobot robot_;
-    f2c::pp::PathPlanning path_planner_;
-    f2c::pp::DubinsCurves dubins_;
-    double finness_;
 
 public:
     FieldProcessorNode() : Node("field_processor_node") {
@@ -51,10 +45,7 @@ public:
         this->declare_parameter<std::string>("geojson_file", "/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson");
         this->get_parameter("geojson_file", geojson_file_);
 
-        robot_.setWidth(0.5);
-        robot_.setCovWidth(5.0);
-
-        finness_ = 0.5;
+        field_ = field::Field(0.5, 5.0, 0.5);
 
         // Create the service client
         gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("/fb/loc/gps2enu");
@@ -134,105 +125,20 @@ private:
             return;
         }
 
-        F2CPath path = generatePath(enu_points);
-        std::vector<PathSegment> pathSegments = pathSegmentGen(path);
-        farmbot_interfaces::msg::Segments segments = generateSegments(pathSegments);
+        F2CPath path = field_.generatePath(enu_points);
+        std::vector<field::PathSegment> pathSegments = field_.pathSegmentGen(path);
+        field_.visualizePath("path.png");
 
+        farmbot_interfaces::msg::Segments segments = generateSegments(pathSegments);
         for (const auto& segment : pathSegments) {
             std::cout << "Segment: " << segment.start.first << ", " << segment.start.second << " -> " << segment.end.first << ", " << segment.end.second << std::endl;
             for (const auto& middle_point : segment.middle) {
                 std::cout << "  Middle: " << middle_point.first << ", " << middle_point.second << std::endl;
             }
         }
-
     }
 
-    F2CPath generatePath(const std::vector<geometry_msgs::msg::Pose>& enu_points, bool visualize = true) {
-        ring_ = F2CLinearRing();
-        for (const auto& enu_point : enu_points) {
-            ring_.addPoint(F2CPoint(enu_point.position.x, enu_point.position.y));
-        }
-
-        cells_ = F2CCells(F2CCell{ring_});
-
-        f2c::hg::ConstHL const_hl;
-        F2CCells no_hl = const_hl.generateHeadlands(cells_, 3.0 * robot_.getWidth());
-
-        f2c::sg::BruteForce bf;
-        F2CSwathsByCells swaths = bf.generateSwaths(M_PI, robot_.getCovWidth(), no_hl);
-
-        f2c::rp::RoutePlannerBase route_planner;
-        F2CRoute route = route_planner.genRoute(no_hl, swaths);
-
-        // for (auto& line : route.getVectorSwaths()) {
-        //     for (auto& sw : line) {
-        //         double x1 = sw.startPoint().X();
-        //         double y1 = sw.startPoint().Y();
-        //         double x2 = sw.endPoint().X();
-        //         double y2 = sw.endPoint().Y();
-        //         // std::cout << "Swath: " << x1 << ", " << y1 << " -> " << x2 << ", " << y2 << std::endl;
-        //     }
-        // }
-
-        f2c::pp::DubinsCurves dubins;
-        F2CPath path = path_planner_.planPath(robot_, route, dubins);
-        path.reduce(finness_);
-
-        if (visualize) {
-            f2c::Visualizer::figure();
-            f2c::Visualizer::plot(cells_);
-            f2c::Visualizer::plot(no_hl);
-            f2c::Visualizer::plot(path);
-            f2c::Visualizer::figure_size(2400, 2400);
-            f2c::Visualizer::save("path.png");
-        }
-
-        return path;   
-    }
-
-    std::vector<PathSegment> pathSegmentGen(const F2CPath& path) {
-        std::vector<PathSegment> pathSegments;
-        PathSegment segm;
-        auto last_state_type = f2c::types::PathSectionType::HL_SWATH;
-        f2c::types::PathState prevState; // Define the previous state properly
-        for (const auto& state : path) {
-            if (state.type == f2c::types::PathSectionType::SWATH) {
-                // If the last state was a TURN, complete the segment and store it
-                if (last_state_type == f2c::types::PathSectionType::TURN) {
-                    segm.start = segm.middle.front();
-                    segm.middle.erase(segm.middle.begin());
-                    segm.end = {state.point.X(), state.point.Y()};
-                    pathSegments.push_back(segm);
-                    // Clear the segment for the next one
-                    segm = PathSegment();
-                    segm.middle.clear();
-                }
-                // Store the SWATH start point
-            } else if (state.type == f2c::types::PathSectionType::TURN) {
-                // If the last state was a SWATH, start a new segment
-                if (last_state_type == f2c::types::PathSectionType::SWATH) {
-                    segm.start = {prevState.point.X(), prevState.point.Y()};
-                    segm.end = {state.point.X(), state.point.Y()};
-                    pathSegments.push_back(segm);
-                    // Clear the segment for the next one
-                    segm = PathSegment();
-                    segm.middle.clear();
-                }
-                // Add the TURN points to the middle vector
-                segm.middle.push_back({state.point.X(), state.point.Y()});
-            }
-            // Update the previous state and last state type
-            prevState = state;
-            last_state_type = state.type;
-        }
-        // Make sure to handle the last segment if it exists
-        if (!segm.middle.empty() || last_state_type == f2c::types::PathSectionType::SWATH) {
-            pathSegments.push_back(segm);
-        }
-        return pathSegments;
-    }
-
-    farmbot_interfaces::msg::Segments generateSegments(const std::vector<PathSegment>& pathSegments) {
+    farmbot_interfaces::msg::Segments generateSegments(const std::vector<field::PathSegment>& pathSegments) {
         farmbot_interfaces::msg::Segments segments;
         for (const auto& segment : pathSegments) {
             farmbot_interfaces::msg::Segment seg;

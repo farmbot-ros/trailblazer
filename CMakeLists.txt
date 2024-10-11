@@ -28,7 +28,7 @@ set(executables
 )
 
 set (utils
-    # geojson
+    fieldgen
 )
 
 find_package(ament_cmake REQUIRED)
