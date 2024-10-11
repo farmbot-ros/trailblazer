@@ -46,6 +46,7 @@ namespace field {
             F2CCells field_;
             F2CCells head_;
             F2CRobot vehicle_;
+            F2CSwathsByCells swaths_;
             F2CRoute route_;
             F2CPath path_;
             double finness_; 
@@ -85,10 +86,14 @@ namespace field {
                 head_ = const_hl.generateHeadlands(field_, 3.0 * vehicle_.getWidth());
                 // Generate waaths
                 f2c::sg::BruteForce bf;
-                F2CSwathsByCells swaths = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_);
+                // F2CSwaths swaths_ = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_.getGeometry(0));
+                swaths_ = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_);
+                // Sort the swaths
+                // f2c::rp::SnakeOrder snake_sorter;
+                // swaths_ = snake_sorter.genSortedSwaths(swaths_);
                 // Generate the route
                 f2c::rp::RoutePlannerBase route_planner;
-                route_ = route_planner.genRoute(head_, swaths);
+                route_ = route_planner.genRoute(head_, swaths_);
                 // Generate the path
                 f2c::pp::DubinsCurves dubins_;
                 f2c::pp::PathPlanning path_planner_;
@@ -97,12 +102,12 @@ namespace field {
                 return path_;
             }
 
-            std::vector<PathSegment> gen_pathsegments(const F2CPath& path) {
+            std::vector<PathSegment> gen_pathsegments() {
                 std::vector<PathSegment> pathSegments;
                 PathSegment segm;
                 auto last_state_type = f2c::types::PathSectionType::HL_SWATH;
                 f2c::types::PathState prevState; // Define the previous state properly
-                for (const auto& state : path) {
+                for (const auto& state : path_) {
                     if (state.type == f2c::types::PathSectionType::SWATH) {
                         // If the last state was a TURN, complete the segment and store it
                         if (last_state_type == f2c::types::PathSectionType::TURN) {
@@ -158,12 +163,13 @@ namespace field {
                 return segments_;
             }
 
-            nav_msgs::msg::Path gen_path_msg(const F2CPath& path) {
+            nav_msgs::msg::Path gen_path_msg() {
                 nav_msgs::msg::Path path_msg;
                 path_msg.header.frame_id = "map";
                 path_msg.header.stamp = rclcpp::Clock().now();
-                for (const auto& state : path) {
+                for (const auto& state : path_) {
                     geometry_msgs::msg::PoseStamped pose;
+                    pose.header = path_msg.header;
                     pose.pose.position.x = state.point.X();
                     pose.pose.position.y = state.point.Y();
                     path_msg.poses.push_back(pose);
@@ -171,30 +177,19 @@ namespace field {
                 return path_msg;
             }
 
-            farmbot_interfaces::msg::Segments gen_segments(const F2CPath& path) {
-                return gen_segments(gen_pathsegments(path));
+            farmbot_interfaces::msg::Segments gen_segments() {
+                return gen_segments(gen_pathsegments());
             }
 
-            void visualizePath(std::string filename) {
-                f2c::Visualizer::figure();
-                f2c::Visualizer::plot(field_);
-                f2c::Visualizer::plot(head_);
-                f2c::Visualizer::plot(path_);
-                f2c::Visualizer::figure_size(2400, 2400);
-                f2c::Visualizer::save(filename);
-            }
-
-            geometry_msgs::msg::PolygonStamped gen_polygon(){
-                geometry_msgs::msg::PolygonStamped polygon;
-                polygon.header.frame_id = "map";
-                polygon.header.stamp = rclcpp::Clock().now();
-                for (const auto& state : poses_) {
-                    geometry_msgs::msg::Point32 point;
-                    point.x = state.position.x;
-                    point.y = state.position.y;
-                    polygon.polygon.points.push_back(point);
-                }
-                return polygon;
+            void update_route(FCPoint start, FCPoint end) {
+                f2c::rp::RoutePlannerBase route_planner;
+                route_planner.setStartAndEndPoint(p);
+                route_ = route_planner.genRoute(head_, swaths_);
+                f2c::pp::DubinsCurves dubins_;
+                f2c::pp::PathPlanning path_planner_;
+                path_ = path_planner_.planPath(vehicle_, route_, dubins_);
+                path_.reduce(finness_);
+                std::cout << "Route updated" << std::endl;
             }
 
             std::pair<geometry_msgs::msg::PolygonStamped, geometry_msgs::msg::PolygonStamped> get_polygons() {

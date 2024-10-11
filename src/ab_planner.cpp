@@ -7,6 +7,7 @@
 #include "fields2cover.h"
 #include "farmbot_planner/utils/geojson.hpp"
 #include "farmbot_planner/utils/fieldgen.hpp"
+#include "ament_index_cpp/get_package_share_directory.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -62,9 +63,12 @@ public:
             .automatically_declare_parameters_from_overrides(true)
         ) {
 
+        std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_planner");
+        std::string geojson_path = package_share_directory + "/config/field.geojson";
+
         name = this->get_parameter_or<std::string>("name", "ab_planner");
         topic_prefix_param = this->get_parameter_or<std::string>("topic_prefix", "/fb");
-        geojson_file_ = this->get_parameter_or<std::string>("geojson_file", "field.geojson");
+        geojson_file_ = this->get_parameter_or<std::string>("geojson_file", geojson_path);
         RCLCPP_INFO(this->get_logger(), "GeoJSON file: %s", geojson_file_.c_str());
         vehicle_width_ = this->get_parameter_or<double>("vehicle_width", 0.5);
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
@@ -160,8 +164,9 @@ private:
         }
 
         auto path = field_.gen_path(enu_points);
-        farmbot_interfaces::msg::Segments segments = field_.gen_segments(path);
-        path_ = field_.gen_path_msg(path);
+        // field_.update_route(-293.946, 208.87);
+        path_ = field_.gen_path_msg();
+        farmbot_interfaces::msg::Segments segments = field_.gen_segments();
         std::tie(outer_polygon_, inner_polygon_) = field_.get_polygons();
         RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
     }
