@@ -8,6 +8,6 @@ ab_planner:
     topic_prefix: '/fb'
     geojson_file: '/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson'
     vehicle_width: 0.5
-    vehicle_coverage: 3.0
+    vehicle_coverage: 5.0
     path_spacing: 0.1
-    path_angle: 120.0 # degrees
+    path_angle: 90.0 # degrees
