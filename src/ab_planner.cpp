@@ -136,22 +136,7 @@ private:
 
         F2CPath path = generatePath(enu_points);
         std::vector<PathSegment> pathSegments = pathSegmentGen(path);
-
-        farmbot_interfaces::msg::Segments segments;
-        for (const auto& segment : pathSegments) {
-            farmbot_interfaces::msg::Segment seg;
-            seg.origin.pose.position.x = segment.start.first;
-            seg.origin.pose.position.y = segment.start.second;
-            seg.destination.pose.position.x = segment.end.first;
-            seg.destination.pose.position.y = segment.end.second;
-            for (const auto& middle_point : segment.middle) {
-                farmbot_interfaces::msg::Waypoint middle;
-                middle.pose.position.x = middle_point.first;
-                middle.pose.position.y = middle_point.second;
-                seg.inbetween.push_back(middle);
-            }
-            segments.segments.push_back(seg);
-        }
+        farmbot_interfaces::msg::Segments segments = generateSegments(pathSegments);
 
         for (const auto& segment : pathSegments) {
             std::cout << "Segment: " << segment.start.first << ", " << segment.start.second << " -> " << segment.end.first << ", " << segment.end.second << std::endl;
@@ -245,6 +230,25 @@ private:
             pathSegments.push_back(segm);
         }
         return pathSegments;
+    }
+
+    farmbot_interfaces::msg::Segments generateSegments(const std::vector<PathSegment>& pathSegments) {
+        farmbot_interfaces::msg::Segments segments;
+        for (const auto& segment : pathSegments) {
+            farmbot_interfaces::msg::Segment seg;
+            seg.origin.pose.position.x = segment.start.first;
+            seg.origin.pose.position.y = segment.start.second;
+            seg.destination.pose.position.x = segment.end.first;
+            seg.destination.pose.position.y = segment.end.second;
+            for (const auto& middle_point : segment.middle) {
+                farmbot_interfaces::msg::Waypoint middle;
+                middle.pose.position.x = middle_point.first;
+                middle.pose.position.y = middle_point.second;
+                seg.inbetween.push_back(middle);
+            }
+            segments.segments.push_back(seg);
+        }
+        return segments;
     }
 };
 
