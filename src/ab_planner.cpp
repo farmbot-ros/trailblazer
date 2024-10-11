@@ -10,6 +10,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "geometry_msgs/msg/polygon_stamped.hpp"
+#include "geometry_msgs/msg/point32.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 
@@ -31,10 +33,16 @@ private:
     field::Field field_;
     farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
+    geometry_msgs::msg::PolygonStamped outer_polygon_;
+    geometry_msgs::msg::PolygonStamped inner_polygon_;
 
     std::string geojson_file_;
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
+
+    rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
+
     bool service_started_ = false;
     rclcpp::TimerBase::SharedPtr service_start_timer_;
     bool planner_initialized_ = false;
@@ -47,13 +55,15 @@ public:
         this->declare_parameter<std::string>("geojson_file", "/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson");
         this->get_parameter("geojson_file", geojson_file_);
 
-        field_ = field::Field(0.5, 5.0, 0.5);
+        field_ = field::Field(0.5, 3.0, 0.1);
 
         // Create the service client
         gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("/fb/loc/gps2enu");
 
         // Create the path publisher
         path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("/fb/pla/path", 10);
+        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("/fb/pla/inner_field", 10);
+        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("/fb/pla/outer_field", 10);
 
         // Timers
         service_start_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_service_start_timer, this));
@@ -67,6 +77,8 @@ private:
         } else {
             service_started_ = true;
             path_publisher_->publish(path_);
+            outer_polygon_publisher_->publish(outer_polygon_);
+            inner_polygon_publisher_->publish(inner_polygon_);
         }
     }
 
@@ -134,8 +146,7 @@ private:
         auto path = field_.gen_path(enu_points);
         farmbot_interfaces::msg::Segments segments = field_.gen_segments(path);
         path_ = field_.gen_path_msg(path);
-        field_.visualizePath("path.png");
-
+        outer_polygon_ = field_.gen_polygon();
         RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
     }
 };

@@ -10,6 +10,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
+#include "geometry_msgs/msg/point32.hpp"
+#include "geometry_msgs/msg/polygon_stamped.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 
 #include "farmbot_interfaces/msg/waypoint.hpp"
@@ -30,12 +32,13 @@ namespace field {
 
     class Field {
         private:
+            std::vector<geometry_msgs::msg::Pose> poses_;
             F2CCells field_;
             F2CCells head_;
             F2CRobot vehicle_;
             F2CRoute route_;
             F2CPath path_;
-            double finness_;
+            double finness_; 
         
         public:
             Field() {}
@@ -54,6 +57,7 @@ namespace field {
             }
 
             F2CPath gen_path(const std::vector<geometry_msgs::msg::Pose>& enu_points) {
+                poses_ = enu_points;
                 F2CLinearRing ring_ = F2CLinearRing();
                 for (const auto& enu_point : enu_points) {
                     ring_.addPoint(F2CPoint(enu_point.position.x, enu_point.position.y));
@@ -162,6 +166,19 @@ namespace field {
                 f2c::Visualizer::plot(path_);
                 f2c::Visualizer::figure_size(2400, 2400);
                 f2c::Visualizer::save(filename);
+            }
+
+            geometry_msgs::msg::PolygonStamped gen_polygon(){
+                geometry_msgs::msg::PolygonStamped polygon;
+                polygon.header.frame_id = "map";
+                polygon.header.stamp = rclcpp::Clock().now();
+                for (const auto& state : poses_) {
+                    geometry_msgs::msg::Point32 point;
+                    point.x = state.position.x;
+                    point.y = state.position.y;
+                    polygon.polygon.points.push_back(point);
+                }
+                return polygon;
             }
 
     };
