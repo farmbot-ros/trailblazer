@@ -33,6 +33,7 @@ private:
 
     std::string geojson_file_;
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
+    rclcpp::Service<farmbot_interfaces::srv::Gps2Enu>::SharedPtr field_service_;
     bool service_started_ = false;
     rclcpp::TimerBase::SharedPtr service_start_timer_;
     bool planner_initialized_ = false;
@@ -67,29 +68,29 @@ private:
 
     void on_planner_init_timer() {
         if (!service_started_) { return; }
-
         std::vector<std::vector<double>> points = getPointsFromGeoJSON(geojson_file_);
-
         if (points.empty()) {
             RCLCPP_ERROR(this->get_logger(), "No points found in the GeoJSON file.");
             return;
         } else {
             RCLCPP_INFO(this->get_logger(), "Processing %lu points from the GeoJSON file.", points.size());
         }
+        generate_field(points);
+    }
 
+
+    void generate_field(std::vector<std::vector<double>> points) {
         planner_initialized_ = true;
         planner_init_timer_->cancel();
-
         // Use the first point as the reference for the datum
         sensor_msgs::msg::NavSatFix ref_point;
         ref_point.latitude = points[0][0];
         ref_point.longitude = points[0][1];
         ref_point.altitude = 0.0;  // Set to 0 or any relevant altitude
-
         // Prepare the request for GPS to ENU conversion
         auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
         request->datum = ref_point;
-
+        // Add the rest of the points to the request
         for (const auto& point : points) {
             sensor_msgs::msg::NavSatFix gps_point;
             gps_point.latitude = point[0];
@@ -97,15 +98,16 @@ private:
             gps_point.altitude = 0.0;  // Adjust if altitude data is available
             request->gps.push_back(gps_point);
         }
-
+        // Send the request to the service
         if (!gps2enu_client_->wait_for_service(1s)) {
             RCLCPP_INFO(this->get_logger(), "Waiting for GPS to ENU conversion service...");
         } 
-
+        // Send the request to the service
         auto state_result = gps2enu_client_->async_send_request(request, [this, request, points](rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedFuture future) {
             auto response = future.get();
             process_enu_points(response->enu);
         });
+        planner_init_timer_->cancel();
     }
 
     std::vector<std::vector<double>> getPointsFromGeoJSON(const std::string& geojson_file) {
@@ -125,36 +127,11 @@ private:
             return;
         }
 
-        F2CPath path = field_.generatePath(enu_points);
-        std::vector<field::PathSegment> pathSegments = field_.pathSegmentGen(path);
+        auto path = field_.gen_path(enu_points);
+        farmbot_interfaces::msg::Segments segments = field_.gen_segments(path);
         field_.visualizePath("path.png");
 
-        farmbot_interfaces::msg::Segments segments = generateSegments(pathSegments);
-        for (const auto& segment : pathSegments) {
-            std::cout << "Segment: " << segment.start.first << ", " << segment.start.second << " -> " << segment.end.first << ", " << segment.end.second << std::endl;
-            for (const auto& middle_point : segment.middle) {
-                std::cout << "  Middle: " << middle_point.first << ", " << middle_point.second << std::endl;
-            }
-        }
-    }
-
-    farmbot_interfaces::msg::Segments generateSegments(const std::vector<field::PathSegment>& pathSegments) {
-        farmbot_interfaces::msg::Segments segments;
-        for (const auto& segment : pathSegments) {
-            farmbot_interfaces::msg::Segment seg;
-            seg.origin.pose.position.x = segment.start.first;
-            seg.origin.pose.position.y = segment.start.second;
-            seg.destination.pose.position.x = segment.end.first;
-            seg.destination.pose.position.y = segment.end.second;
-            for (const auto& middle_point : segment.middle) {
-                farmbot_interfaces::msg::Waypoint middle;
-                middle.pose.position.x = middle_point.first;
-                middle.pose.position.y = middle_point.second;
-                seg.inbetween.push_back(middle);
-            }
-            segments.segments.push_back(seg);
-        }
-        return segments;
+        RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
     }
 };
 
