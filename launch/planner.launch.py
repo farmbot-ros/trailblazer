@@ -16,32 +16,28 @@ def launch_setup(context, *args, **kwargs):
 
     nodes_array = []
 
-    robs4crops = bool(yaml.safe_load(open(param_file))['global']['ros__parameters']['r4c'])
-    executable = 'path_server' if not robs4crops else 'path_server_r4c'
-    path_server = Node(
-        package='farmbot_navigation',
-        executable=executable,
-        name='path_server',
+    ab_planner = Node(
+        package='farmbot_planner',
+        executable="ab_planner",
+        name='ab_planner',
         namespace=namespace,
         parameters=[
             {"frame_prefix": namespace+"/"},
             {"namespace": namespace},
-            yaml.safe_load(open(param_file))['path_server']['ros__parameters'],
+            yaml.safe_load(open(param_file))['ab_planner']['ros__parameters'],
             yaml.safe_load(open(param_file))['global']['ros__parameters']
         ]
     )
-    nodes_array.append(path_server)
+    nodes_array.append(ab_planner)
     
     return nodes_array
 
 
 def generate_launch_description(): 
     namespace_arg = DeclareLaunchArgument('namespace', default_value='fb')
-    antena_arg = DeclareLaunchArgument('double_antenna', default_value='True')
-    
+
     return LaunchDescription([
-        namespace_arg,
-        antena_arg, 
-        OpaqueFunction(function = launch_setup)
+            namespace_arg,
+            OpaqueFunction(function = launch_setup)
         ]
     )

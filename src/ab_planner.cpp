@@ -29,6 +29,13 @@ struct PathSegment {
 
 class FieldProcessorNode : public rclcpp::Node {
 private:
+    std::string name;
+    std::string topic_prefix_param;
+    std::string geojson_file_;
+    double vehicle_width_;
+    double vehicle_coverage_;
+    double path_spacing_;
+    double path_angle_;
 
     field::Field field_;
     farmbot_interfaces::msg::Segments segments_;
@@ -36,7 +43,6 @@ private:
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
 
-    std::string geojson_file_;
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
@@ -50,20 +56,30 @@ private:
 
 
 public:
-    FieldProcessorNode() : Node("field_processor_node") {
-        // Declare and get parameters
-        this->declare_parameter<std::string>("geojson_file", "/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson");
-        this->get_parameter("geojson_file", geojson_file_);
+    FieldProcessorNode() : Node("ab_planner",
+            rclcpp::NodeOptions()
+            .allow_undeclared_parameters(true)
+            .automatically_declare_parameters_from_overrides(true)
+        ) {
 
-        field_ = field::Field(0.5, 3.0, 0.1, 90);
+        name = this->get_parameter_or<std::string>("name", "ab_planner");
+        topic_prefix_param = this->get_parameter_or<std::string>("topic_prefix", "/fb");
+        geojson_file_ = this->get_parameter_or<std::string>("geojson_file", "field.geojson");
+        RCLCPP_INFO(this->get_logger(), "GeoJSON file: %s", geojson_file_.c_str());
+        vehicle_width_ = this->get_parameter_or<double>("vehicle_width", 0.5);
+        vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
+        path_spacing_ = this->get_parameter_or<double>("path_spacing", 0.1);
+        path_angle_ = this->get_parameter_or<double>("path_angle", 90);
+
+        field_ = field::Field(vehicle_width_, vehicle_coverage_, path_spacing_, path_angle_);
 
         // Create the service client
-        gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("/fb/loc/gps2enu");
+        gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>(topic_prefix_param + "/loc/gps2enu");
 
         // Create the path publisher
-        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("/fb/pla/path", 10);
-        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("/fb/pla/inner_field", 10);
-        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("/fb/pla/outer_field", 10);
+        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>(topic_prefix_param + "/pla/path", 10);
+        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/inner_field", 10);
+        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/outer_field", 10);
 
         // Timers
         service_start_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_service_start_timer, this));
