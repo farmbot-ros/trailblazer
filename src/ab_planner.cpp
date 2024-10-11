@@ -134,39 +134,10 @@ private:
             return;
         }
 
-        ring_ = F2CLinearRing();
-        for (const auto& enu_point : enu_points) {
-            ring_.addPoint(F2CPoint(enu_point.position.x, enu_point.position.y));
-        }
-
-        cells_ = F2CCells(F2CCell{ring_});
-
-        f2c::hg::ConstHL const_hl;
-        F2CCells no_hl = const_hl.generateHeadlands(cells_, 3.0 * robot_.getWidth());
-
-        f2c::sg::BruteForce bf;
-        F2CSwathsByCells swaths = bf.generateSwaths(M_PI, robot_.getCovWidth(), no_hl);
-
-        f2c::rp::RoutePlannerBase route_planner;
-        F2CRoute route = route_planner.genRoute(no_hl, swaths);
-
-        for (auto& line : route.getVectorSwaths()) {
-            for (auto& sw : line) {
-                double x1 = sw.startPoint().X();
-                double y1 = sw.startPoint().Y();
-                double x2 = sw.endPoint().X();
-                double y2 = sw.endPoint().Y();
-                // std::cout << "Swath: " << x1 << ", " << y1 << " -> " << x2 << ", " << y2 << std::endl;
-            }
-        }
-
-        f2c::pp::DubinsCurves dubins;
-        F2CPath path = path_planner_.planPath(robot_, route, dubins);
-        path.reduce(finness_);
-
-        farmbot_interfaces::msg::Segments segments;
+        F2CPath path = generatePath(enu_points);
         std::vector<PathSegment> pathSegments = pathSegmentGen(path);
 
+        farmbot_interfaces::msg::Segments segments;
         for (const auto& segment : pathSegments) {
             farmbot_interfaces::msg::Segment seg;
             seg.origin.pose.position.x = segment.start.first;
@@ -189,15 +160,49 @@ private:
             }
         }
 
+    }
 
-        f2c::Visualizer::figure();
-        f2c::Visualizer::plot(cells_);
-        f2c::Visualizer::plot(no_hl);
-        f2c::Visualizer::plot(path);
-        f2c::Visualizer::figure_size(2400, 2400);
-        f2c::Visualizer::save("Tutorial_8_1_ENU.png");
+    F2CPath generatePath(const std::vector<geometry_msgs::msg::Pose>& enu_points, bool visualize = true) {
+        ring_ = F2CLinearRing();
+        for (const auto& enu_point : enu_points) {
+            ring_.addPoint(F2CPoint(enu_point.position.x, enu_point.position.y));
+        }
 
-        RCLCPP_INFO(this->get_logger(), "Field processing completed and visualization saved.");
+        cells_ = F2CCells(F2CCell{ring_});
+
+        f2c::hg::ConstHL const_hl;
+        F2CCells no_hl = const_hl.generateHeadlands(cells_, 3.0 * robot_.getWidth());
+
+        f2c::sg::BruteForce bf;
+        F2CSwathsByCells swaths = bf.generateSwaths(M_PI, robot_.getCovWidth(), no_hl);
+
+        f2c::rp::RoutePlannerBase route_planner;
+        F2CRoute route = route_planner.genRoute(no_hl, swaths);
+
+        // for (auto& line : route.getVectorSwaths()) {
+        //     for (auto& sw : line) {
+        //         double x1 = sw.startPoint().X();
+        //         double y1 = sw.startPoint().Y();
+        //         double x2 = sw.endPoint().X();
+        //         double y2 = sw.endPoint().Y();
+        //         // std::cout << "Swath: " << x1 << ", " << y1 << " -> " << x2 << ", " << y2 << std::endl;
+        //     }
+        // }
+
+        f2c::pp::DubinsCurves dubins;
+        F2CPath path = path_planner_.planPath(robot_, route, dubins);
+        path.reduce(finness_);
+
+        if (visualize) {
+            f2c::Visualizer::figure();
+            f2c::Visualizer::plot(cells_);
+            f2c::Visualizer::plot(no_hl);
+            f2c::Visualizer::plot(path);
+            f2c::Visualizer::figure_size(2400, 2400);
+            f2c::Visualizer::save("path.png");
+        }
+
+        return path;   
     }
 
     std::vector<PathSegment> pathSegmentGen(const F2CPath& path) {
