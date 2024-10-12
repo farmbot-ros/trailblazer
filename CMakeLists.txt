@@ -25,6 +25,7 @@ cmake_policy(SET CMP0074 NEW)
 
 set(executables
     ab_planner
+    ab_planner2
 )
 
 set (utils

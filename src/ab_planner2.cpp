@@ -6,7 +6,6 @@
 #include <iostream>
 #include "fields2cover.h"
 #include "farmbot_planner/utils/geojson.hpp"
-#include "farmbot_planner/utils/fieldgen.hpp"
 #include "ament_index_cpp/get_package_share_directory.hpp"
 
 #include "rclcpp/rclcpp.hpp"
@@ -40,7 +39,7 @@ private:
     double path_spacing_;
     double path_angle_;
 
-    field::Field field_;
+    farmtrax::Field field_;
     farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
@@ -76,8 +75,6 @@ public:
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
         path_spacing_ = this->get_parameter_or<double>("path_spacing", 0.1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
-
-        field_ = field::Field(vehicle_width_, vehicle_coverage_, path_spacing_, path_angle_);
 
         // Create the service client
         gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>(topic_prefix_param + "/loc/gps2enu");
@@ -165,12 +162,31 @@ private:
             return;
         }
 
-        auto path = field_.gen_path(enu_points);
-        field_.update_route(-293.946, 208.87);
-        path_ = field_.gen_path_msg();
-        farmbot_interfaces::msg::Segments segments = field_.gen_segments();
-        std::tie(outer_polygon_, inner_polygon_) = field_.get_polygons();
-        RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
+        std::vector<geometry_msgs::msg::Point> points;
+        for (const auto& enu_point : enu_points) {
+            geometry_msgs::msg::Point point;
+            point.x = enu_point.position.x;
+            point.y = enu_point.position.y;
+            points.push_back(point);
+        }
+
+        // auto path = field_.gen_path(enu_points);
+        // field_.update_route(-293.946, 208.87);
+        // path_ = field_.gen_path_msg();
+        // farmbot_interfaces::msg::Segments segments = field_.gen_segments();
+        // std::tie(outer_polygon_, inner_polygon_) = field_.get_polygons();
+        // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
+
+        field_.init(points);
+        auto hl = field_.generateHeadlands(vehicle_width_);
+
+        outer_polygon_ = field_.getPolygon();
+        inner_polygon_ = hl.getPolygon();
+
+        for (const auto& point : points) {
+            RCLCPP_INFO(this->get_logger(), "ENU Point: %f, %f", point.x, point.y);
+        }
+
     }
 };
 

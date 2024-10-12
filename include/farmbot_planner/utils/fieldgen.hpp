@@ -46,7 +46,8 @@ namespace field {
             F2CCells field_;
             F2CCells head_;
             F2CRobot vehicle_;
-            F2CSwathsByCells swaths_;
+            // F2CSwathsByCells swaths_;
+            F2CSwaths swaths_;
             F2CRoute route_;
             F2CPath path_;
             double finness_; 
@@ -86,20 +87,41 @@ namespace field {
                 head_ = const_hl.generateHeadlands(field_, 3.0 * vehicle_.getWidth());
                 // Generate waaths
                 f2c::sg::BruteForce bf;
-                // F2CSwaths swaths_ = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_.getGeometry(0));
-                swaths_ = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_);
+                swaths_ = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_.getGeometry(0));
+                // swaths_ = bf.generateSwaths(toRadians(angle_), vehicle_.getCovWidth(), head_);
                 // Sort the swaths
                 // f2c::rp::SnakeOrder snake_sorter;
                 // swaths_ = snake_sorter.genSortedSwaths(swaths_);
                 // Generate the route
-                f2c::rp::RoutePlannerBase route_planner;
-                route_ = route_planner.genRoute(head_, swaths_);
+                // f2c::rp::RoutePlannerBase route_planner;
+                // route_ = route_planner.genRoute(head_, swaths_);
                 // Generate the path
                 f2c::pp::DubinsCurves dubins_;
                 f2c::pp::PathPlanning path_planner_;
-                path_ = path_planner_.planPath(vehicle_, route_, dubins_);
+                path_ = path_planner_.planPath(vehicle_, swaths_, dubins_);
                 path_.reduce(finness_);
                 return path_;
+            }
+
+            void update_route(double x, double y, double z=0) {
+                f2c::types::Point p(x, y, z);
+                F2CSwaths swaths2;
+                const double tolerance = 0.1;
+                for (auto& swath : swaths_) {
+                    while (std::abs(swath.startPoint().X() - p.X()) > tolerance || 
+                        std::abs(swath.startPoint().Y() - p.Y()) > tolerance) {
+                            RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Current point: %f, %f", swath.startPoint().X(), swath.startPoint().Y());
+                            RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Target point: %f, %f", p.X(), p.Y());
+                        continue;
+                    }
+                    swaths2.emplace_back(swath);
+                }
+                swaths_ = swaths2;
+                f2c::pp::DubinsCurves dubins_;
+                f2c::pp::PathPlanning path_planner_;
+                path_ = path_planner_.planPath(vehicle_, swaths_, dubins_);
+                path_.reduce(finness_);
+                std::cout << "Route updated" << std::endl;
             }
 
             std::vector<PathSegment> gen_pathsegments() {
@@ -179,17 +201,6 @@ namespace field {
 
             farmbot_interfaces::msg::Segments gen_segments() {
                 return gen_segments(gen_pathsegments());
-            }
-
-            void update_route(FCPoint start, FCPoint end) {
-                f2c::rp::RoutePlannerBase route_planner;
-                route_planner.setStartAndEndPoint(p);
-                route_ = route_planner.genRoute(head_, swaths_);
-                f2c::pp::DubinsCurves dubins_;
-                f2c::pp::PathPlanning path_planner_;
-                path_ = path_planner_.planPath(vehicle_, route_, dubins_);
-                path_.reduce(finness_);
-                std::cout << "Route updated" << std::endl;
             }
 
             std::pair<geometry_msgs::msg::PolygonStamped, geometry_msgs::msg::PolygonStamped> get_polygons() {
