@@ -45,6 +45,7 @@ find_package(message_filters REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(farmbot_interfaces REQUIRED)
+find_package(Boost REQUIRED)
 
 set(dependencies_ros
     rclcpp 
@@ -90,6 +91,7 @@ set(dependencies_sys
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}
     ${GDAL_LIBRARIES}
+    ${Boost_LIBRARIES}
     Fields2Cover
     nlohmann_json::nlohmann_json
 )
@@ -119,6 +121,7 @@ include_directories(
     ${rclcpp_INCLUDE_DIRS}
     ${std_msgs_INCLUDE_DIRS}
     ${nlohmann_json_INCLUDE_DIRS}
+    ${Boost_INCLUDE_DIRS}
 )
 
 

@@ -162,12 +162,9 @@ private:
             return;
         }
 
-        std::vector<geometry_msgs::msg::Point> points;
-        for (const auto& enu_point : enu_points) {
-            geometry_msgs::msg::Point point;
-            point.x = enu_point.position.x;
-            point.y = enu_point.position.y;
-            points.push_back(point);
+        std::vector<std::pair<double, double>> points;
+        for (const auto& point : enu_points) {
+            points.emplace_back(point.position.x, point.position.y);
         }
 
         // auto path = field_.gen_path(enu_points);
@@ -177,14 +174,14 @@ private:
         // std::tie(outer_polygon_, inner_polygon_) = field_.get_polygons();
         // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
 
-        field_.init(points);
-        auto hl = field_.generateHeadlands(vehicle_width_);
+        field_.setBoundary(points);
+        // auto hl = field_.generateHeadlands(vehicle_width_);
 
-        outer_polygon_ = field_.getPolygon();
-        inner_polygon_ = hl.getPolygon();
+        // outer_polygon_ = field_.getPolygon();
+        // inner_polygon_ = hl.getPolygon();
 
         for (const auto& point : points) {
-            RCLCPP_INFO(this->get_logger(), "ENU Point: %f, %f", point.x, point.y);
+            RCLCPP_INFO(this->get_logger(), "ENU Point: %f, %f", point.first, point.second);
         }
 
     }
