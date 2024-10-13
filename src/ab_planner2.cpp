@@ -4,8 +4,9 @@
 #include <utility>
 #include <chrono>
 #include <iostream>
-#include "fields2cover.h"
 #include "farmbot_planner/utils/geojson.hpp"
+#include "farmbot_planner/farmtrax/field.hpp"
+#include "farmbot_planner/farmtrax/swath.hpp"
 #include "ament_index_cpp/get_package_share_directory.hpp"
 
 #include "rclcpp/rclcpp.hpp"
@@ -19,7 +20,6 @@
 #include "farmbot_interfaces/msg/segment.hpp"
 #include "farmbot_interfaces/msg/segments.hpp"
 
-#include "farmbot_planner/farmtrax/field.hpp"
 
 using namespace std::chrono_literals;
 
@@ -40,6 +40,8 @@ private:
     double path_angle_;
 
     farmtrax::Field field_;
+    farmtrax::Swath swath_;
+
     farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
@@ -175,16 +177,59 @@ private:
         // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
 
         field_.setBoundary(points);
+        farmtrax::Field hl = field_.getShrunkField(vehicle_width_ * 3.0);
         // auto hl = field_.generateHeadlands(vehicle_width_);
 
-        // outer_polygon_ = field_.getPolygon();
-        // inner_polygon_ = hl.getPolygon();
+        outer_polygon_ = vector2Polygon(field_.getBoundary());
+        inner_polygon_ = vector2Polygon(hl.getBoundary());
+
+        swath_ = farmtrax::Swath(hl, 10);
+        path_ = vector2Path(swath_.getSwathsAsVector());
 
         for (const auto& point : points) {
             RCLCPP_INFO(this->get_logger(), "ENU Point: %f, %f", point.first, point.second);
         }
 
     }
+
+    // vector of vector of double to ros polygon
+    geometry_msgs::msg::PolygonStamped vector2Polygon(const std::vector<std::vector<double>>& points) {
+        geometry_msgs::msg::PolygonStamped polygon;
+        polygon.header.frame_id = "map";
+        polygon.header.stamp = rclcpp::Clock().now();
+        for (const auto& point : points) {
+            geometry_msgs::msg::Point32 p;
+            p.x = point[0];
+            p.y = point[1];
+            polygon.polygon.points.push_back(p);
+        }
+        return polygon;
+    }
+
+    //   std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> getSwathsAsVector() const {
+    //         std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> swaths;
+    //         for (const auto& swath : swaths_) {
+    //             swaths.push_back({{swath.front().x(), swath.front().y()}, {swath.back().x(), swath.back().y()}});
+    //         }
+    //         return swaths;
+    //     }
+    // vector of pairs of double doubles (each representing a line) to ros path
+    nav_msgs::msg::Path vector2Path(const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>>& lines) {
+        nav_msgs::msg::Path path;
+        path.header.frame_id = "map";
+        path.header.stamp = rclcpp::Clock().now();
+        for (const auto& line : lines) {
+            geometry_msgs::msg::PoseStamped pose;
+            pose.pose.position.x = line.first.first;
+            pose.pose.position.y = line.first.second;
+            path.poses.push_back(pose);
+            pose.pose.position.x = line.second.first;
+            pose.pose.position.y = line.second.second;
+            path.poses.push_back(pose);
+        }
+        return path;
+    }
+
 };
 
 
