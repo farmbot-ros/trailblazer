@@ -177,13 +177,13 @@ private:
         // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
 
         field_.setBoundary(points);
-        farmtrax::Field hl = field_.getShrunkField(vehicle_width_ * 3.0);
+        farmtrax::Field hl = field_.getShrunkField(vehicle_width_ * 6.0);
         // auto hl = field_.generateHeadlands(vehicle_width_);
 
         outer_polygon_ = vector2Polygon(field_.getBoundary());
         inner_polygon_ = vector2Polygon(hl.getBoundary());
 
-        swath_ = farmtrax::Swath(hl, 10);
+        swath_ = farmtrax::Swath(field_, hl, 10.0);
         path_ = vector2Path(swath_.getSwathsAsVector());
 
         for (const auto& point : points) {
