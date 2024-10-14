@@ -40,7 +40,7 @@ private:
     double path_angle_;
 
     farmtrax::Field field_;
-    farmtrax::Swath swath_;
+    farmtrax::Swaths swaths_;
 
     farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
@@ -183,8 +183,8 @@ private:
         outer_polygon_ = vector2Polygon(field_.getBoundary());
         inner_polygon_ = vector2Polygon(hl.getBoundary());
 
-        swath_ = farmtrax::Swath(field_, hl, 10.0);
-        path_ = vector2Path(swath_.getSwathsAsVector());
+        swaths_ = farmtrax::Swaths(field_, hl, 10.0);
+        // path_ = vector2Path(swath_.getSwathsAsVector());
 
         for (const auto& point : points) {
             RCLCPP_INFO(this->get_logger(), "ENU Point: %f, %f", point.first, point.second);
