@@ -8,6 +8,11 @@
 #include <boost/geometry/algorithms/envelope.hpp>
 #include <boost/geometry/algorithms/expand.hpp>
 #include <boost/geometry/algorithms/distance.hpp> // For calculating distance
+
+#include <boost/uuid/uuid.hpp>            // uuid class
+#include <boost/uuid/uuid_generators.hpp> // generators
+#include <boost/uuid/uuid_io.hpp>         // streaming operators etc.
+
 #include <vector>
 #include <string>
 #include <cmath>
@@ -63,43 +68,51 @@ namespace farmtrax {
             return swaths_;
         }
 
-        // Function to connect swath heads with the shortest path
-        void connectSwathHeadsWithShortestPath() {
-            if (swaths_.size() < 2) {
-                // No need to connect if there's only one or no swath
-                return;
-            }
-
-            // Vector to hold the connecting lines between swath heads
-            std::vector<Linestring> connecting_lines;
-
-            for (size_t i = 0; i < swaths_.size() - 1; ++i) {
-                // Get the current swath's end point (tail)
-                const Point& current_end = swaths_[i].swath.back();
-
-                // Get the next swath's start point (head)
-                const Point& next_start = swaths_[i + 1].swath.front();
-
-                // Create a connecting line between the current end and the next start
-                Linestring connecting_line;
-                connecting_line.push_back(current_end);
-                connecting_line.push_back(next_start);
-
-                // Add the connecting line to the list of swaths (or separate list if needed)
-                connecting_lines.push_back(connecting_line);
-            }
-
-            // Optionally, append connecting lines to swaths
-            for (const auto& line : connecting_lines) {
-                Swath connecting_swath;
-                connecting_swath.swath = line;
-                connecting_swath.uuid = generateUUID();  // Generate UUID for the connecting line
-                connecting_swath.type = SwathType::PATH; // Set as path type
-                connecting_swath.transportlane = false;  // Default, can modify later
-
-                swaths_.push_back(connecting_swath);
-            }
+void connectSwathsInUShape() {
+    // Ensure all swaths are oriented in the same direction
+    for (size_t i = 0; i < swaths_.size(); ++i) {
+        // For every other swath, reverse the swath so they all point in the same direction
+        if (i % 2 == 1) {
+            std::reverse(swaths_[i].swath.begin(), swaths_[i].swath.end());
         }
+    }
+
+    // Vector to hold the connecting lines between swath heads and tails
+    std::vector<Linestring> connecting_lines;
+
+    // Now connect swaths in a U-shaped manner (end of one swath to the start of the next)
+    for (size_t i = 0; i < swaths_.size() - 1; ++i) {
+        // Always connect the end of the current swath to the start of the next swath
+        const Point& current_end = swaths_[i].swath.back();     // End of the current swath
+        const Point& next_start = swaths_[i + 1].swath.front(); // Start of the next swath
+
+        // Create a connecting line between current swath and next swath
+        Linestring connecting_line;
+        connecting_line.push_back(current_end);
+        connecting_line.push_back(next_start);
+
+        // Add the connecting line to the vector
+        connecting_lines.push_back(connecting_line);
+    }
+
+    // Append the connecting lines to swaths_ as new Swaths
+    for (const auto& line : connecting_lines) {
+        Swath connecting_swath;
+        connecting_swath.swath = line;
+        connecting_swath.uuid = generateUUID();  // Generate UUID for the connecting line
+        connecting_swath.type = SwathType::HEAD; // Set as HEAD type for U-shaped connection
+        connecting_swath.transportlane = false;  // Default, can modify later if needed
+
+        // Add the new connecting swath to the swaths_ vector
+        swaths_.push_back(connecting_swath);
+    }
+
+    // No connection is made between the last swath and the first
+}
+
+
+
+
 
     private:
         // Helper function to generate swaths with a specified angle
@@ -172,9 +185,7 @@ namespace farmtrax {
 
         // Function to generate a unique identifier for each swath
         std::string generateUUID() const {
-            // Simple unique ID generator for illustration purposes
-            static int counter = 0;
-            return "swath-" + std::to_string(++counter);
+            return boost::uuids::to_string(boost::uuids::random_generator()());
         }
     };
 
