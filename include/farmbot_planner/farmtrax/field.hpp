@@ -42,6 +42,8 @@ namespace farmtrax {
             Polygon polygon_;
             Rtree rtree_; // R-tree for efficient spatial querying of polygon edges
             std::vector<LineString> edges_; // Store the edges for precise intersection
+            double width_;
+            double height_;
 
         public:
             // Constructors
@@ -57,22 +59,35 @@ namespace farmtrax {
                 if (coordinates.size() < 3) {
                     throw std::invalid_argument("A polygon must have at least 3 points.");
                 }
-
                 polygon_.outer().clear();
                 for (const auto& coord : coordinates) {
                     polygon_.outer().emplace_back(coord.first, coord.second);
                 }
-
                 // Ensure the polygon is closed
                 if (!bg::equals(polygon_.outer().front(), polygon_.outer().back())) {
                     polygon_.outer().emplace_back(polygon_.outer().front());
                 }
-
                 // Correct the polygon's orientation and closure
                 bg::correct(polygon_);
-
                 // After setting the boundary, insert the polygon's edges into the R-tree
-                insertPolygonEdgesIntoRtree();
+                const auto& outer_ring = polygon_.outer();
+                for (std::size_t i = 0; i < outer_ring.size() - 1; ++i) {
+                    LineString edge;
+                    bg::append(edge, outer_ring[i]);
+                    bg::append(edge, outer_ring[i + 1]);
+                    // Compute the envelope of the edge
+                    Box box;
+                    bg::envelope(edge, box);
+                    // Insert the box and index into the R-tree
+                    rtree_.insert(std::make_pair(box, i));
+                    // Store the edge for precise intersection checks
+                    edges_.push_back(edge);
+                }
+                // Compute the width and height of the field
+                Box bbox;
+                bg::envelope(polygon_, bbox);
+                width_ = bbox.max_corner().x() - bbox.min_corner().x();
+                height_ = bbox.max_corner().y() - bbox.min_corner().y();
             }
 
             // Get the boundary of the field as a vector of (x, y) coordinates
@@ -130,23 +145,6 @@ namespace farmtrax {
                 return bg::within(line, polygon_);
             }
 
-            // Insert polygon edges into the R-tree
-            void insertPolygonEdgesIntoRtree() {
-                const auto& outer_ring = polygon_.outer();
-                for (std::size_t i = 0; i < outer_ring.size() - 1; ++i) {
-                    LineString edge;
-                    bg::append(edge, outer_ring[i]);
-                    bg::append(edge, outer_ring[i + 1]);
-                    // Compute the envelope of the edge
-                    Box box;
-                    bg::envelope(edge, box);
-                    // Insert the box and index into the R-tree
-                    rtree_.insert(std::make_pair(box, i));
-                    // Store the edge for precise intersection checks
-                    edges_.push_back(edge);
-                }
-            }
-
             // Check if a LineString intersects the polygon using the R-tree
             bool intersects(const LineString& line) const {
                 // Compute the envelope of the connection
@@ -178,16 +176,12 @@ namespace farmtrax {
 
             // Get the width of the field (x-axis)
             double getWidth() const {
-                Box bbox;
-                bg::envelope(polygon_, bbox);
-                return bbox.max_corner().x() - bbox.min_corner().x();
+                return width_;
             }
             
             // Get the height of the field (y-axis)
             double getHeight() const {
-                Box bbox;
-                bg::envelope(polygon_, bbox);
-                return bbox.max_corner().y() - bbox.min_corner().y();
+                return height_;
             }
 
         private:
