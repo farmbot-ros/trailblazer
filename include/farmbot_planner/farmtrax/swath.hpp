@@ -20,6 +20,16 @@
 #include <queue>
 
 namespace farmtrax {
+    // Define Cartesian point type
+    typedef bg::model::d2::point_xy<double> Point;
+    // Define polygon type using the Cartesian point
+    typedef bg::model::polygon<Point> Polygon;
+    // Define linestring type for edges
+    typedef bg::model::linestring<Point> LineString;
+    // Define box type
+    typedef bg::model::box<Point> Box;
+    // Define a multi-polygon type
+    typedef bg::model::multi_polygon<Polygon> Multipolygon;
 
     // Enum class to represent different types of swaths
     enum class SwathType {
@@ -30,7 +40,7 @@ namespace farmtrax {
 
     // Struct to represent each swath, along with its properties
     struct Swath {
-        Linestring swath;         // The actual swath line (geometry)
+        LineString swath;         // The actual swath line (geometry)
         std::string uuid;         // A unique identifier for each swath
         SwathType type;           // The type of swath (LAND, HEAD, PATH)
         bool transportlane;       // Flag to indicate if it's a transport lane
@@ -41,27 +51,22 @@ namespace farmtrax {
         Field inner_field_;
         Field outer_field_;
         double swath_width_;
+        double angle_degrees_;
         std::vector<Swath> swaths_;  // Holds Swath structs
 
     public:
         Swaths() = default;
 
         // Constructor to initialize with a field and swath width
-        Swaths(const Field& outer_field, const Field& inner_field, double swath_width)
-            : outer_field_(outer_field), inner_field_(inner_field), swath_width_(swath_width) {
-            generateSwaths();
+        Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees) {
+            genSwaths(outer_field, inner_field, swath_width, angle_degrees);
         }
 
-        // Set the field and regenerate swaths
-        void setFields(const Field& outer_field, const Field& inner_field) {
+        void genSwaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees) {
             outer_field_ = outer_field;
             inner_field_ = inner_field;
-            generateSwaths();
-        }
-
-        // Set the swath width and regenerate swaths
-        void setSwathWidth(double swath_width) {
             swath_width_ = swath_width;
+            angle_degrees_ = angle_degrees;
             generateSwaths();
         }
 
@@ -81,7 +86,7 @@ namespace farmtrax {
             }
 
             // Vector to hold the connecting lines between swath heads and tails
-            std::vector<Linestring> connecting_lines;
+            std::vector<LineString> connecting_lines;
 
             // Extract endpoints of swaths
             std::vector<std::pair<Point, bool>> endpoints; // Point, is_start
@@ -96,7 +101,7 @@ namespace farmtrax {
                 const Point& next_start = swaths_[i + 1].swath.front();
 
                 if (!intersectsPolygon(current_end, next_start)) {
-                    Linestring connection = createConnection(current_end, next_start);
+                    LineString connection = createConnection(current_end, next_start);
                     addConnectingSwath(connection);  // Add as HEAD
                 }
             }
@@ -104,9 +109,9 @@ namespace farmtrax {
 
     private:
         // Helper function to generate swaths with a specified angle
-        void generateSwaths(double angle_degrees = 45) {
+        void generateSwaths() {
             swaths_.clear();
-            Field new_field = inner_field_.getEnlargedField(0.5);
+            Field new_field = inner_field_.getBuffered(0.5, farmtrax::BufferType::ENLARGE);
             Polygon fieldPolygon = new_field.getPolygon();
 
             // Get the bounding box of the field
@@ -114,7 +119,7 @@ namespace farmtrax {
             boost::geometry::envelope(fieldPolygon, boundingBox);
 
             // Convert angle from degrees to radians
-            double angle_radians = angle_degrees * M_PI / 180.0;
+            double angle_radians = angle_degrees_ * M_PI / 180.0;
 
             // Determine the dimensions of the bounding box
             double width = boundingBox.max_corner().x() - boundingBox.min_corner().x();
@@ -127,10 +132,10 @@ namespace farmtrax {
 
             // Iterate to generate swaths with a defined offset based on swath width
             for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width_) {
-                Linestring swathLine = generateSwathLine(centerPoint, angle_radians, offset);
+                LineString swathLine = generateSwathLine(centerPoint, angle_radians, offset);
 
                 // Clip the swath line to fit within the field polygon
-                std::vector<Linestring> clipped;
+                std::vector<LineString> clipped;
                 boost::geometry::intersection(swathLine, fieldPolygon, clipped);
 
                 // Keep all valid segments of the swath that intersect the field polygon
@@ -147,8 +152,8 @@ namespace farmtrax {
         }
 
         // Function to generate a line at a certain offset from the center, adjusted for the angle
-        Linestring generateSwathLine(const Point& center, double angle_radians, double offset) const {
-            Linestring swathLine;
+        LineString generateSwathLine(const Point& center, double angle_radians, double offset) const {
+            LineString swathLine;
 
             // Calculate the perpendicular offset direction based on the angle
             double cos_angle = std::cos(angle_radians);
@@ -173,7 +178,7 @@ namespace farmtrax {
 
         // Function to check if a connection intersects the polygon
         bool intersectsPolygon(const Point& p1, const Point& p2) const {
-            Linestring connection;
+            LineString connection;
             connection.push_back(p1);
             connection.push_back(p2);
 
@@ -181,15 +186,15 @@ namespace farmtrax {
         }
 
         // Function to create a connection between two points
-        Linestring createConnection(const Point& p1, const Point& p2) const {
-            Linestring connection;
+        LineString createConnection(const Point& p1, const Point& p2) const {
+            LineString connection;
             connection.push_back(p1);
             connection.push_back(p2);
             return connection;
         }
 
         // Function to add a connecting swath to the swath list
-        void addConnectingSwath(const Linestring& connection) {
+        void addConnectingSwath(const LineString& connection) {
             Swath connecting_swath;
             connecting_swath.swath = connection;
             connecting_swath.uuid = generateUUID();

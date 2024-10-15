@@ -183,14 +183,14 @@ private:
         // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
 
         field_.setBoundary(points);
-        farmtrax::Field hl = field_.getShrunkField(vehicle_width_ * 6.0);
+        farmtrax::Field hl = field_.getBuffered(vehicle_width_*6.0, farmtrax::BufferType::SHRINK);
         // auto hl = field_.generateHeadlands(vehicle_width_);
 
         outer_polygon_ = vector2Polygon(field_.getBoundary());
         inner_polygon_ = vector2Polygon(hl.getBoundary());
 
-        swaths_ = farmtrax::Swaths(field_, hl, 10.0);
-        swaths_.connectSwathsInUShape();
+        swaths_.genSwaths(field_, hl, 6.0, 90.0);
+        // swaths_.connectSwathsInUShape();
         path_ = vector2Path(swaths_.getSwaths());
         line_marker_ = vector2Lines(swaths_.getSwaths());
 
@@ -202,14 +202,14 @@ private:
     }
 
     // vector of vector of double to ros polygon
-    geometry_msgs::msg::PolygonStamped vector2Polygon(const std::vector<std::vector<double>>& points) {
+    geometry_msgs::msg::PolygonStamped vector2Polygon(const std::vector<std::pair<double, double>>& points) {
         geometry_msgs::msg::PolygonStamped polygon;
         polygon.header.frame_id = "map";
         polygon.header.stamp = rclcpp::Clock().now();
         for (const auto& point : points) {
             geometry_msgs::msg::Point32 p;
-            p.x = point[0];
-            p.y = point[1];
+            p.x = point.first;
+            p.y = point.second;
             polygon.polygon.points.push_back(p);
         }
         return polygon;
