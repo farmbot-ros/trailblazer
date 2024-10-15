@@ -16,6 +16,8 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <map>
+#include <queue>
 
 namespace farmtrax {
 
@@ -68,51 +70,37 @@ namespace farmtrax {
             return swaths_;
         }
 
-void connectSwathsInUShape() {
-    // Ensure all swaths are oriented in the same direction
-    for (size_t i = 0; i < swaths_.size(); ++i) {
-        // For every other swath, reverse the swath so they all point in the same direction
-        if (i % 2 == 1) {
-            std::reverse(swaths_[i].swath.begin(), swaths_[i].swath.end());
+        // Function to connect swaths in a U-shape
+        void connectSwathsInUShape() {
+            // Ensure all swaths are oriented in the same direction
+            for (size_t i = 0; i < swaths_.size(); ++i) {
+                // For every other swath, reverse the swath so they all point in the same direction
+                if (i % 2 == 1) {
+                    std::reverse(swaths_[i].swath.begin(), swaths_[i].swath.end());
+                }
+            }
+
+            // Vector to hold the connecting lines between swath heads and tails
+            std::vector<Linestring> connecting_lines;
+
+            // Extract endpoints of swaths
+            std::vector<std::pair<Point, bool>> endpoints; // Point, is_start
+            for (const auto& swath : swaths_) {
+                endpoints.emplace_back(swath.swath.front(), true);  // Start point
+                endpoints.emplace_back(swath.swath.back(), false);  // End point
+            }
+
+            // Connect swaths
+            for (size_t i = 0; i < swaths_.size() - 1; ++i) {
+                const Point& current_end = swaths_[i].swath.back();
+                const Point& next_start = swaths_[i + 1].swath.front();
+
+                if (!intersectsPolygon(current_end, next_start)) {
+                    Linestring connection = createConnection(current_end, next_start);
+                    addConnectingSwath(connection);  // Add as HEAD
+                }
+            }
         }
-    }
-
-    // Vector to hold the connecting lines between swath heads and tails
-    std::vector<Linestring> connecting_lines;
-
-    // Now connect swaths in a U-shaped manner (end of one swath to the start of the next)
-    for (size_t i = 0; i < swaths_.size() - 1; ++i) {
-        // Always connect the end of the current swath to the start of the next swath
-        const Point& current_end = swaths_[i].swath.back();     // End of the current swath
-        const Point& next_start = swaths_[i + 1].swath.front(); // Start of the next swath
-
-        // Create a connecting line between current swath and next swath
-        Linestring connecting_line;
-        connecting_line.push_back(current_end);
-        connecting_line.push_back(next_start);
-
-        // Add the connecting line to the vector
-        connecting_lines.push_back(connecting_line);
-    }
-
-    // Append the connecting lines to swaths_ as new Swaths
-    for (const auto& line : connecting_lines) {
-        Swath connecting_swath;
-        connecting_swath.swath = line;
-        connecting_swath.uuid = generateUUID();  // Generate UUID for the connecting line
-        connecting_swath.type = SwathType::HEAD; // Set as HEAD type for U-shaped connection
-        connecting_swath.transportlane = false;  // Default, can modify later if needed
-
-        // Add the new connecting swath to the swaths_ vector
-        swaths_.push_back(connecting_swath);
-    }
-
-    // No connection is made between the last swath and the first
-}
-
-
-
-
 
     private:
         // Helper function to generate swaths with a specified angle
@@ -150,7 +138,7 @@ void connectSwathsInUShape() {
                     Swath swath;  // Create a Swath struct for each segment
                     swath.swath = segment;
                     swath.uuid = generateUUID();  // Generate a unique ID for each swath
-                    swath.type = SwathType::LAND; // Default type, can modify as needed
+                    swath.type = SwathType::LAND; // Always mark as LAND here
                     swath.transportlane = false;  // Default, can modify as needed
 
                     swaths_.push_back(swath);
@@ -181,6 +169,33 @@ void connectSwathsInUShape() {
             swathLine.push_back(newEnd);
 
             return swathLine;
+        }
+
+        // Function to check if a connection intersects the polygon
+        bool intersectsPolygon(const Point& p1, const Point& p2) const {
+            Linestring connection;
+            connection.push_back(p1);
+            connection.push_back(p2);
+
+            return boost::geometry::intersects(connection, inner_field_.getPolygon());
+        }
+
+        // Function to create a connection between two points
+        Linestring createConnection(const Point& p1, const Point& p2) const {
+            Linestring connection;
+            connection.push_back(p1);
+            connection.push_back(p2);
+            return connection;
+        }
+
+        // Function to add a connecting swath to the swath list
+        void addConnectingSwath(const Linestring& connection) {
+            Swath connecting_swath;
+            connecting_swath.swath = connection;
+            connecting_swath.uuid = generateUUID();
+            connecting_swath.type = SwathType::HEAD;  // Only connections are labeled as HEAD
+            connecting_swath.transportlane = false;   // Can be modified as needed
+            swaths_.push_back(connecting_swath);
         }
 
         // Function to generate a unique identifier for each swath

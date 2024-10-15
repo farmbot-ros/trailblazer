@@ -190,7 +190,7 @@ private:
         inner_polygon_ = vector2Polygon(hl.getBoundary());
 
         swaths_ = farmtrax::Swaths(field_, hl, 10.0);
-        // swaths_.connectSwathsInUShape();
+        swaths_.connectSwathsInUShape();
         path_ = vector2Path(swaths_.getSwaths());
         line_marker_ = vector2Lines(swaths_.getSwaths());
 
