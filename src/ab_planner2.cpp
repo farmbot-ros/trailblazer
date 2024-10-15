@@ -191,6 +191,7 @@ private:
 
         swaths_.genSwaths(field_, hl, 6.0, 90.0);
         // swaths_.connectSwathsInUShape();
+        // swaths_.connectSwathsWithHeadland();
         path_ = vector2Path(swaths_.getSwaths());
         line_marker_ = vector2Lines(swaths_.getSwaths());
 

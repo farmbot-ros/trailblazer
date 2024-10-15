@@ -41,6 +41,7 @@ namespace farmtrax {
             Polygon polygon_;
             Rtree rtree_; // R-tree for efficient spatial querying of polygon edges
             std::vector<LineString> edges_; // Store the edges for precise intersection
+
         public:
             // Constructors
             Field() = default;
