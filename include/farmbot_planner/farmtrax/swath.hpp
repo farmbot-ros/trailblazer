@@ -158,10 +158,26 @@ namespace farmtrax {
                 }
             }
             // Add edges with weights based on distance on the graph
-            for (size_t i = 0; i < swaths_.size(); ++i) {
-                for (size_t j = i + 1; j < swaths_.size(); ++j) {
-                    double distance = bg::distance(swaths_[i].swath, swaths_[j].swath);
-                    boost::add_edge(i, j, distance, swath_graph_);
+            // Optimized to reduce complexity using R-tree
+            double distance_threshold = swath_width_ * 2.0; // Example threshold, can be parameterized
+            for (std::size_t i = 0; i < swaths_.size(); ++i) {
+                // Query R-tree for swaths that are within the distance threshold
+                std::vector<RtreeValue> nearby_swaths;
+                Box query_box;
+                boost::geometry::envelope(swaths_[i].swath, query_box);
+                // Expand the query box by the distance threshold
+                bg::expand(query_box, Box(Point(query_box.min_corner().x() - distance_threshold, query_box.min_corner().y() - distance_threshold),
+                                        Point(query_box.max_corner().x() + distance_threshold, query_box.max_corner().y() + distance_threshold)));
+                swath_rtree_.query(bgi::intersects(query_box), std::back_inserter(nearby_swaths));
+                
+                for (const auto& val : nearby_swaths) {
+                    std::size_t j = val.second;
+                    if (j > i) { // Ensure each edge is added only once
+                        double distance = bg::distance(swaths_[i].swath, swaths_[j].swath);
+                        if (distance <= distance_threshold) {
+                            boost::add_edge(i, j, distance, swath_graph_);
+                        }
+                    }
                 }
             }
         }

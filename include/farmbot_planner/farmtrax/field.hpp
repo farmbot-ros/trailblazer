@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cmath>
+#include <limits> // For numeric_limits
 
 namespace farmtrax {
 
@@ -98,8 +99,6 @@ namespace farmtrax {
                 return bg::perimeter(polygon_);
             }
 
-            
-
             // Calculate the longest side of the field polygon
             double getLongestSide() const {
                 double max_length = 0.0;
@@ -130,7 +129,8 @@ namespace farmtrax {
             bool contains(const LineString& line) const {
                 return bg::within(line, polygon_);
             }
-                        // Insert polygon edges into the R-tree
+
+            // Insert polygon edges into the R-tree
             void insertPolygonEdgesIntoRtree() {
                 const auto& outer_ring = polygon_.outer();
                 for (std::size_t i = 0; i < outer_ring.size() - 1; ++i) {
@@ -175,6 +175,21 @@ namespace farmtrax {
                         throw std::invalid_argument("Invalid buffer type.");
                 }
             }
+
+            // Get the width of the field (x-axis)
+            double getWidth() const {
+                Box bbox;
+                bg::envelope(polygon_, bbox);
+                return bbox.max_corner().x() - bbox.min_corner().x();
+            }
+            
+            // Get the height of the field (y-axis)
+            double getHeight() const {
+                Box bbox;
+                bg::envelope(polygon_, bbox);
+                return bbox.max_corner().y() - bbox.min_corner().y();
+            }
+
         private:
             // Generate a new Field that is "x" meters smaller from every border
             Field getShrunkField(double x) const {
