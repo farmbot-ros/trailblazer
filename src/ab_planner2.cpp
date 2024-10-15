@@ -265,7 +265,7 @@ private:
                 if (swath.type == farmtrax::SwathType::LAND) {
                     line_marker.color.r = 0.0f;  // Green
                     line_marker.color.g = 1.0f;
-                    line_marker.color.b = 0.0f;
+                    line_marker.color.b = 1.0f;
                     line_marker.color.a = 1.0f;  // Fully opaque
                 } else {
                     line_marker.color.r = 1.0f;  // Red

@@ -98,6 +98,8 @@ namespace farmtrax {
                 return bg::perimeter(polygon_);
             }
 
+            
+
             // Calculate the longest side of the field polygon
             double getLongestSide() const {
                 double max_length = 0.0;
