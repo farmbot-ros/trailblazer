@@ -257,24 +257,25 @@ private:
 
         // Iterate through the swaths and add points to the marker
         for (const auto& swath : swaths) {
-            geometry_msgs::msg::Point p;
-            for (const auto& point : swath.swath) {
-                p.x = point.x();
-                p.y = point.y();
-                p.z = 0.0;  // Set the z-coordinate to 0
-                if (swath.type == farmtrax::SwathType::LAND) {
-                    line_marker.color.r = 0.0f;  // Green
-                    line_marker.color.g = 1.0f;
-                    line_marker.color.b = 1.0f;
-                    line_marker.color.a = 1.0f;  // Fully opaque
-                } else {
-                    line_marker.color.r = 1.0f;  // Red
-                    line_marker.color.g = 0.0f;
-                    line_marker.color.b = 0.0f;
-                    line_marker.color.a = 1.0f;  // Fully opaque
-                }
-                line_marker.points.push_back(p);
+            geometry_msgs::msg::Point p1;
+            p1.x = swath.swath[0].x();
+            p1.y = swath.swath[0].y();
+            geometry_msgs::msg::Point p2;
+            p2.x = swath.swath[1].x();
+            p2.y = swath.swath[1].y();
+            if (swath.type == farmtrax::SwathType::LAND) {
+                line_marker.color.r = 0.0f;  // Green
+                line_marker.color.g = 1.0f;
+                line_marker.color.b = 1.0f;
+                line_marker.color.a = 1.0f;  // Fully opaque
+            } else {
+                line_marker.color.r = 1.0f;  // Red
+                line_marker.color.g = 0.0f;
+                line_marker.color.b = 0.0f;
+                line_marker.color.a = 1.0f;  // Fully opaque
             }
+            line_marker.points.push_back(p1);
+            line_marker.points.push_back(p2);
         }
 
         return line_marker;

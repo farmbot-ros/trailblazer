@@ -104,6 +104,11 @@ namespace farmtrax {
                 return polygon_;
             }
 
+            //get edges of the field
+            const std::vector<LineString>& getEdges() const {
+                return edges_;
+            }
+
             // Calculate the area of the field
             double getArea() const {
                 return bg::area(polygon_);
