@@ -4,9 +4,11 @@
 #include <utility>
 #include <chrono>
 #include <iostream>
-#include "fields2cover.h"
 #include "farmbot_planner/utils/geojson.hpp"
+#include "farmbot_planner/farmtrax/field.hpp"
+#include "farmbot_planner/farmtrax/swath.hpp"
 #include "ament_index_cpp/get_package_share_directory.hpp"
+#include <visualization_msgs/msg/marker.hpp>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -19,7 +21,6 @@
 #include "farmbot_interfaces/msg/segment.hpp"
 #include "farmbot_interfaces/msg/segments.hpp"
 
-#include "farmbot_planner/farmtrax/field.hpp"
 
 using namespace std::chrono_literals;
 
@@ -40,13 +41,18 @@ private:
     double path_angle_;
 
     farmtrax::Field field_;
+    farmtrax::Swaths swaths_;
+
     farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
+    visualization_msgs::msg::Marker line_marker_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
 
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
+
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr line_publisher_;
 
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
@@ -83,6 +89,7 @@ public:
         path_publisher_ = this->create_publisher<nav_msgs::msg::Path>(topic_prefix_param + "/pla/path", 10);
         inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/inner_field", 10);
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/outer_field", 10);
+        line_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>(topic_prefix_param + "/pla/swath_lines", 10);
 
         // Timers
         service_start_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_service_start_timer, this));
@@ -98,6 +105,7 @@ private:
             path_publisher_->publish(path_);
             outer_polygon_publisher_->publish(outer_polygon_);
             inner_polygon_publisher_->publish(inner_polygon_);
+            line_publisher_->publish(line_marker_);
         }
     }
 
@@ -175,16 +183,102 @@ private:
         // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
 
         field_.setBoundary(points);
+        farmtrax::Field hl = field_.getShrunkField(vehicle_width_ * 6.0);
         // auto hl = field_.generateHeadlands(vehicle_width_);
 
-        // outer_polygon_ = field_.getPolygon();
-        // inner_polygon_ = hl.getPolygon();
+        outer_polygon_ = vector2Polygon(field_.getBoundary());
+        inner_polygon_ = vector2Polygon(hl.getBoundary());
+
+        swaths_ = farmtrax::Swaths(field_, hl, 10.0);
+        swaths_.connectSwathsInUShape();
+        path_ = vector2Path(swaths_.getSwaths());
+        line_marker_ = vector2Lines(swaths_.getSwaths());
+
 
         for (const auto& point : points) {
             RCLCPP_INFO(this->get_logger(), "ENU Point: %f, %f", point.first, point.second);
         }
 
     }
+
+    // vector of vector of double to ros polygon
+    geometry_msgs::msg::PolygonStamped vector2Polygon(const std::vector<std::vector<double>>& points) {
+        geometry_msgs::msg::PolygonStamped polygon;
+        polygon.header.frame_id = "map";
+        polygon.header.stamp = rclcpp::Clock().now();
+        for (const auto& point : points) {
+            geometry_msgs::msg::Point32 p;
+            p.x = point[0];
+            p.y = point[1];
+            polygon.polygon.points.push_back(p);
+        }
+        return polygon;
+    }
+
+
+    nav_msgs::msg::Path vector2Path(const std::vector<farmtrax::Swath>& swaths) {
+        nav_msgs::msg::Path path;
+        path.header.frame_id = "map";
+        path.header.stamp = rclcpp::Clock().now();
+        for (const auto& swath : swaths) {
+            for (const auto& point : swath.swath) {
+                geometry_msgs::msg::PoseStamped pose;
+                pose.pose.position.x = point.x();
+                pose.pose.position.y = point.y();
+                path.poses.push_back(pose);
+            }
+        }
+        return path;
+    }
+
+    visualization_msgs::msg::Marker vector2Lines(const std::vector<farmtrax::Swath>& swaths) {
+        visualization_msgs::msg::Marker line_marker;
+        
+        // Set the frame and timestamp
+        line_marker.header.frame_id = "map";
+        line_marker.header.stamp = rclcpp::Clock().now();
+
+        // Set the namespace and id for this marker
+        line_marker.ns = "swath_lines";
+        line_marker.id = 0;
+
+        // Define the type of marker (LINE_STRIP)
+        line_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+
+        // Set the scale of the lines (width of the lines)
+        line_marker.scale.x = 0.1;  // Adjust the width of the line here
+
+        // Set the color (RGBA)
+
+
+        // Set the lifetime of the marker (0 means forever)
+        line_marker.lifetime = rclcpp::Duration::from_seconds(0);
+
+        // Iterate through the swaths and add points to the marker
+        for (const auto& swath : swaths) {
+            geometry_msgs::msg::Point p;
+            for (const auto& point : swath.swath) {
+                p.x = point.x();
+                p.y = point.y();
+                p.z = 0.0;  // Set the z-coordinate to 0
+                if (swath.type == farmtrax::SwathType::LAND) {
+                    line_marker.color.r = 0.0f;  // Green
+                    line_marker.color.g = 1.0f;
+                    line_marker.color.b = 0.0f;
+                    line_marker.color.a = 1.0f;  // Fully opaque
+                } else {
+                    line_marker.color.r = 1.0f;  // Red
+                    line_marker.color.g = 0.0f;
+                    line_marker.color.b = 0.0f;
+                    line_marker.color.a = 1.0f;  // Fully opaque
+                }
+                line_marker.points.push_back(p);
+            }
+        }
+
+        return line_marker;
+    }
+
 };
 
 

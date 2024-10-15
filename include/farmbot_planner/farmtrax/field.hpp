@@ -13,9 +13,12 @@ namespace farmtrax {
 
     // Define Cartesian point type
     typedef boost::geometry::model::d2::point_xy<double> Point;
-
     // Define polygon type using the Cartesian point
     typedef boost::geometry::model::polygon<Point> Polygon;
+    //define a linestring
+    typedef boost::geometry::model::linestring<Point> Linestring;
+    // Define a multi-polygon type
+    typedef boost::geometry::model::multi_polygon<Polygon> Multipolygon;
 
     class Field {
     public:
@@ -49,12 +52,17 @@ namespace farmtrax {
         }
 
         // Get the boundary of the field as a vector of (x, y) coordinates
-        std::vector<std::pair<double, double>> getBoundary() const {
-            std::vector<std::pair<double, double>> boundary;
+        std::vector<std::vector<double>> getBoundary() const {
+            std::vector<std::vector<double>> boundary;
             for (const auto& point : polygon_.outer()) {
-                boundary.emplace_back(point.x(), point.y());
+                boundary.push_back({point.x(), point.y()});
             }
             return boundary;
+        }
+
+        // Get the polygon representing the field
+        const Polygon& getPolygon() const {
+            return polygon_;
         }
 
         // Calculate the area of the field
@@ -93,8 +101,122 @@ namespace farmtrax {
             return boost::geometry::within(point, polygon_);
         }
 
+        // check if a linestring is inside the field
+        bool contains(const Linestring& line) const {
+            return boost::geometry::within(line, polygon_);
+        }
+
+        // Generate a new Field that is "x" meters smaller from every border
+    Field getShrunkField(double x) const {
+        if (x < 0) {
+            throw std::invalid_argument("Shrink distance must be non-negative.");
+        }
+
+        // Define buffer strategies with the correct end strategy
+        // Negative distance for shrinking
+        boost::geometry::strategy::buffer::distance_symmetric<double> distance_strategy(-x);
+        boost::geometry::strategy::buffer::side_straight side_strategy;
+        boost::geometry::strategy::buffer::join_round join_strategy;
+        boost::geometry::strategy::buffer::end_round end_strategy;
+        boost::geometry::strategy::buffer::point_circle point_strategy(8); // 8 points per circle for smoothness
+
+        // Perform buffering with negative distance to shrink the polygon
+        Multipolygon result;
+        boost::geometry::buffer(
+            polygon_,
+            result,
+            distance_strategy,
+            side_strategy,
+            join_strategy,
+            end_strategy,
+            point_strategy
+        );
+
+        if (result.empty()) {
+            throw std::runtime_error("Shrinking resulted in an empty field.");
+        }
+        // Select the largest polygon from the result
+        const Polygon* largest = nullptr;
+        double max_area = -std::numeric_limits<double>::max();
+        for (const auto& poly : result) {
+            double area = boost::geometry::area(poly);
+            if (area > max_area) {
+                max_area = area;
+                largest = &poly;
+            }
+        }
+        if (!largest) {
+            throw std::runtime_error("Failed to determine the largest polygon after shrinking.");
+        }
+        // Convert the largest polygon back to a Field
+        Field shrunkField;
+        std::vector<std::pair<double, double>> shrunkBoundary;
+        for (const auto& point : largest->outer()) {
+            shrunkBoundary.emplace_back(point.x(), point.y());
+        }
+
+        shrunkField.setBoundary(shrunkBoundary);
+        return shrunkField;
+    }
+
+    Field getEnlargedField(double x) const {
+        if (x < 0) {
+            throw std::invalid_argument("Enlargement distance must be non-negative.");
+        }
+
+        // Define buffer strategies with the correct end strategy
+        // Positive distance for enlarging
+        boost::geometry::strategy::buffer::distance_symmetric<double> distance_strategy(x);
+        boost::geometry::strategy::buffer::side_straight side_strategy;
+        boost::geometry::strategy::buffer::join_round join_strategy;
+        boost::geometry::strategy::buffer::end_round end_strategy;
+        boost::geometry::strategy::buffer::point_circle point_strategy(8); // 8 points per circle for smoothness
+
+        // Perform buffering with positive distance to enlarge the polygon
+        Multipolygon result;
+        boost::geometry::buffer(
+            polygon_,
+            result,
+            distance_strategy,
+            side_strategy,
+            join_strategy,
+            end_strategy,
+            point_strategy
+        );
+
+        if (result.empty()) {
+            throw std::runtime_error("Enlarging resulted in an empty field.");
+        }
+
+        // Select the largest polygon from the result
+        const Polygon* largest = nullptr;
+        double max_area = -std::numeric_limits<double>::max();
+        for (const auto& poly : result) {
+            double area = boost::geometry::area(poly);
+            if (area > max_area) {
+                max_area = area;
+                largest = &poly;
+            }
+        }
+        if (!largest) {
+            throw std::runtime_error("Failed to determine the largest polygon after enlarging.");
+        }
+
+        // Convert the largest polygon back to a Field
+        Field enlargedField;
+        std::vector<std::pair<double, double>> enlargedBoundary;
+        for (const auto& point : largest->outer()) {
+            enlargedBoundary.emplace_back(point.x(), point.y());
+        }
+
+        enlargedField.setBoundary(enlargedBoundary);
+        return enlargedField;
+    }
+
+
     private:
         Polygon polygon_;
+        // Field inner_field_;
     };
 
 } // namespace farmtrax

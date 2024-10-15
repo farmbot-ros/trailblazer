@@ -24,12 +24,12 @@ install(
 cmake_policy(SET CMP0074 NEW)
 
 set(executables
-    ab_planner
+    # ab_planner
     ab_planner2
 )
 
 set (utils
-    fieldgen
+    # fieldgen
 )
 
 find_package(ament_cmake REQUIRED)
@@ -39,13 +39,15 @@ find_package(std_srvs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(farmbot_interfaces REQUIRED)
-find_package(Boost REQUIRED)
+
+
 
 set(dependencies_ros
     rclcpp 
@@ -54,6 +56,7 @@ set(dependencies_ros
     nav_msgs
     geometry_msgs
     sensor_msgs
+    visualization_msgs
     tf2
     tf2_ros
     message_filters
@@ -62,15 +65,8 @@ set(dependencies_ros
     farmbot_interfaces
 )
 
-option(BUILD_PYTHON "Build Python SWIG module" OFF)
-FetchContent_Declare(
-    Fields2Cover
-    GIT_REPOSITORY https://github.com/Fields2Cover/Fields2Cover.git
-    GIT_TAG        main 
-)
-FetchContent_MakeAvailable(Fields2Cover)
-# set_property(DIRECTORY ${fields2cover_SOURCE_DIR} APPEND PROPERTY COMPILE_OPTIONS -Wno-undef)
 
+find_package(Boost REQUIRED)
 find_package(Eigen3 REQUIRED)
 include_directories(${Eigen_INCLUDE_DIRS})
 link_directories(${Eigen_LIBRARY_DIRS})
@@ -86,14 +82,15 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/usr/share/cmake/geographiclib/")
 find_package(GeographicLib REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
+
 set(dependencies_sys
     fmt::fmt
+    ${Boost_LIBRARIES}
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}
     ${GDAL_LIBRARIES}
-    ${Boost_LIBRARIES}
-    Fields2Cover
     nlohmann_json::nlohmann_json
+    ${GeographicLib_LIBRARIES}
 )
 
 foreach(util ${utils})
@@ -118,10 +115,10 @@ install(TARGETS
 
 include_directories(
     include
+    ${Boost_INCLUDE_DIRS}
     ${rclcpp_INCLUDE_DIRS}
     ${std_msgs_INCLUDE_DIRS}
     ${nlohmann_json_INCLUDE_DIRS}
-    ${Boost_INCLUDE_DIRS}
 )
 
 
