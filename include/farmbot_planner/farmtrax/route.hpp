@@ -42,8 +42,6 @@ namespace farmtrax {
 
     class Route {
         private:
-            Field inner_field_;
-            Field outer_field_;
             Swaths swaths_;
 
         public:

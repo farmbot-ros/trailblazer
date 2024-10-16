@@ -9,6 +9,7 @@
 #include "farmbot_planner/farmtrax/swath.hpp"
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -46,6 +47,7 @@ private:
     farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
     visualization_msgs::msg::Marker line_marker_;
+    visualization_msgs::msg::MarkerArray arrow_marker_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
 
@@ -53,6 +55,7 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr line_publisher_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr arrow_publisher_;
 
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
@@ -90,6 +93,7 @@ public:
         inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/inner_field", 10);
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/outer_field", 10);
         line_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>(topic_prefix_param + "/pla/swath_lines", 10);
+        arrow_publisher_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pla/swath_arrows", 10);
 
         // Timers
         service_start_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_service_start_timer, this));
@@ -106,6 +110,7 @@ private:
             outer_polygon_publisher_->publish(outer_polygon_);
             inner_polygon_publisher_->publish(inner_polygon_);
             line_publisher_->publish(line_marker_);
+            arrow_publisher_->publish(arrow_marker_);
         }
     }
 
@@ -175,30 +180,16 @@ private:
             points.emplace_back(point.position.x, point.position.y);
         }
 
-        // auto path = field_.gen_path(enu_points);
-        // field_.update_route(-293.946, 208.87);
-        // path_ = field_.gen_path_msg();
-        // farmbot_interfaces::msg::Segments segments = field_.gen_segments();
-        // std::tie(outer_polygon_, inner_polygon_) = field_.get_polygons();
-        // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
-
         field_.gen_field(points);
         farmtrax::Field hl = field_.get_buffered(vehicle_width_*6.0, farmtrax::BufferType::SHRINK);
-        // auto hl = field_.generateHeadlands(vehicle_width_);
+        RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         inner_polygon_ = vector2Polygon(hl.get_border_points());
-
-        swaths_.gen_swaths(field_, hl, 6.0, 90.0);
-        // swaths_.connectSwathsInUShape();
-        // swaths_.connectSwathsWithHeadland();
+        swaths_.gen_swaths(field_, hl, 6.0, 65.0, 1);
         path_ = vector2Path(swaths_.get_swaths());
-        line_marker_ = vector2Lines(swaths_.get_swaths());
-
-
-        for (const auto& point : points) {
-            RCLCPP_INFO(this->get_logger(), "ENU Point: %f, %f", point.first, point.second);
-        }
+        arrow_marker_ = vector2Arrows(swaths_.get_swaths());
+        RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
     }
 
@@ -234,27 +225,18 @@ private:
 
     visualization_msgs::msg::Marker vector2Lines(const std::vector<farmtrax::Swath>& swaths) {
         visualization_msgs::msg::Marker line_marker;
-        
         // Set the frame and timestamp
         line_marker.header.frame_id = "map";
         line_marker.header.stamp = rclcpp::Clock().now();
-
         // Set the namespace and id for this marker
         line_marker.ns = "swath_lines";
         line_marker.id = 0;
-
         // Define the type of marker (LINE_STRIP)
         line_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
-
         // Set the scale of the lines (width of the lines)
         line_marker.scale.x = 0.1;  // Adjust the width of the line here
-
-        // Set the color (RGBA)
-
-
         // Set the lifetime of the marker (0 means forever)
         line_marker.lifetime = rclcpp::Duration::from_seconds(0);
-
         // Iterate through the swaths and add points to the marker
         for (const auto& swath : swaths) {
             geometry_msgs::msg::Point p1;
@@ -263,7 +245,7 @@ private:
             geometry_msgs::msg::Point p2;
             p2.x = swath.swath[1].x();
             p2.y = swath.swath[1].y();
-            if (swath.type == farmtrax::SwathType::LAND) {
+            if (swath.type == farmtrax::SwathType::LINE) {
                 line_marker.color.r = 0.0f;  // Green
                 line_marker.color.g = 1.0f;
                 line_marker.color.b = 1.0f;
@@ -277,9 +259,52 @@ private:
             line_marker.points.push_back(p1);
             line_marker.points.push_back(p2);
         }
-
         return line_marker;
     }
+
+    visualization_msgs::msg::MarkerArray vector2Arrows(const std::vector<farmtrax::Swath>& swaths) {
+        visualization_msgs::msg::MarkerArray markers;
+        int id = 0;
+        for (const auto& swath : swaths) {
+            visualization_msgs::msg::Marker arrow;
+            arrow.header.frame_id = "map";
+            arrow.header.stamp = rclcpp::Clock().now();
+            arrow.ns = "swath_arrows";
+            arrow.id = id++;
+            arrow.type = visualization_msgs::msg::Marker::ARROW;
+            arrow.action = visualization_msgs::msg::Marker::ADD;
+            arrow.scale.x = 0.2;  // Shaft diameter
+            arrow.scale.y = 1;  // Head diameter
+            arrow.scale.z = 2.0;  // Head length
+            arrow.color.r = 0.0f;  // Green
+            if (swath.type == farmtrax::SwathType::LINE) {
+                arrow.color.r = 0.0f;  // Green
+                arrow.color.g = 1.0f;
+                arrow.color.b = 1.0f;
+                arrow.color.a = 1.0f;  // Fully opaque
+            } else {
+                arrow.color.r = 1.0f;  // Red
+                arrow.color.g = 0.0f;
+                arrow.color.b = 0.0f;
+                arrow.color.a = 1.0f;  // Fully opaque
+            }
+            arrow.lifetime = rclcpp::Duration::from_seconds(0);
+            geometry_msgs::msg::Point p1;
+            p1.x = swath.swath[0].x();
+            p1.y = swath.swath[0].y();
+            geometry_msgs::msg::Point p2;
+            p2.x = swath.swath[1].x();
+            p2.y = swath.swath[1].y();
+            if (swath.direction == farmtrax::Direction::REVERSE) {
+                std::swap(p1, p2);
+            }
+            arrow.points.push_back(p1);
+            arrow.points.push_back(p2);
+            markers.markers.push_back(arrow);
+        }
+        return markers;
+    }
+
 
 };
 

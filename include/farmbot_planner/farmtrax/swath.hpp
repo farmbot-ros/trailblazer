@@ -41,8 +41,8 @@ namespace farmtrax {
 
     // Enum class to represent different types of swaths
     enum class SwathType {
-        LAND,
-        HEAD,
+        LINE,
+        TURN,
         PATH
     };
 
@@ -56,7 +56,7 @@ namespace farmtrax {
         int index;                // Index of the swath
         LineString swath;         // The actual swath line (geometry)
         std::string uuid;         // A unique identifier for each swath
-        SwathType type;           // The type of swath (LAND, HEAD, PATH)
+        SwathType type;           // The type of swath (LINE, TURN, PATH)
         Direction direction;      // The direction of the swath (FORWARD, REVERSE)
         bool transportlane;       // Flag to indicate if it's a transport lane
         float length;             // Length of the swath
@@ -77,14 +77,14 @@ namespace farmtrax {
             Swaths() = default;
 
             // Constructor to initialize with a field and swath width
-            Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees) {
-                gen_swaths(outer_field, inner_field, swath_width, angle_degrees);
+            Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1) {
+                gen_swaths(outer_field, inner_field, swath_width, angle_degrees, alternate_freq);
             }
 
-            void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees) {
+            void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1) {
                 swath_width_ = swath_width;
                 angle_degrees_ = angle_degrees;
-                generate_swaths(outer_field, inner_field);
+                generate_swaths(outer_field, inner_field, alternate_freq);
             }
 
             // Get the swaths as a vector of Swath structs
@@ -138,9 +138,9 @@ namespace farmtrax {
                         return s.uuid == uuid;
                     });
                     if (it != swaths_.end()) {
-                        add_swath(swath.swath, SwathType::HEAD, std::distance(swaths_.begin(), it));
+                        add_swath(swath.swath, SwathType::TURN, std::distance(swaths_.begin(), it));
                     } else {
-                        add_swath(swath.swath, SwathType::HEAD);
+                        add_swath(swath.swath, SwathType::TURN);
                     }
                 }
             }
@@ -150,12 +150,12 @@ namespace farmtrax {
                 Swath connecting_swath;
                 connecting_swath.swath = connection;
                 connecting_swath.uuid = generate_UUID();
-                connecting_swath.type = swath_type;         // Only connections are labeled as HEAD
+                connecting_swath.type = swath_type;         // Only connections are labeled as TURN
                 connecting_swath.transportlane = true;      // Can be modified as needed
                 if (insert_index != -1) {
-                    swaths_.push_back(connecting_swath);
-                } else {
                     swaths_.insert(swaths_.begin() + insert_index, connecting_swath);
+                } else {
+                    swaths_.push_back(connecting_swath);
                 }
                 // Insert the connecting swath into the R-tree
                 Box swath_box;
@@ -196,8 +196,8 @@ namespace farmtrax {
                     // Alternate the direction of the swaths based on the frequency
                     alternate = (counter % alternate_freq == 0) ? !alternate : alternate;
 
-                    double half_length = std::max(outer_field_.get_width(), outer_field_.get_height());
-                    LineString swathLine = generate_swathine(centerPoint, angle_radians, offset, half_length);
+                    double length = std::max(outer_field_.get_width(), outer_field_.get_height()) * 2;
+                    LineString swathLine = generate_swathine(centerPoint, angle_radians, offset, length);
                     // Clip the swath line to fit within the field polygon
 
                     std::vector<LineString> clipped;
@@ -205,10 +205,14 @@ namespace farmtrax {
                     // Keep all valid segments of the swath that intersect the field polygon
 
                     for (const auto& segment : clipped) {
+                        //if lenght is smaller than swath width, then ignore it
+                        if (bg::length(segment) < swath_width_ ) {
+                            continue;
+                        }
                         Swath swath;  // Create a Swath struct for each segment
                         swath.swath = segment;
                         swath.uuid = generate_UUID();  // Generate a unique ID for each swath
-                        swath.type = SwathType::LAND; // Always mark as LAND here
+                        swath.type = SwathType::LINE; // Always mark as LINE here
                         swath.transportlane = false;  // Default, can modify as needed
                         swath.length = bg::length(segment); // Calculate the length of the swath
                         swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
@@ -223,7 +227,7 @@ namespace farmtrax {
             }
 
             // Function to generate a line at a certain offset from the center, adjusted for the angle
-            LineString generate_swathine(const Point& center, double angle_radians, double offset, double half_length) const {
+            LineString generate_swathine(const Point& center, double angle_radians, double offset, double length) const {
                 LineString swathLine;
 
                 // Calculate the perpendicular offset direction based on the angle
@@ -231,11 +235,11 @@ namespace farmtrax {
                 double sin_angle = std::sin(angle_radians);
 
                 // Calculate the start and end points of the swath line
-                Point newStart(center.x() + (offset * sin_angle) - (half_length * cos_angle),
-                            center.y() - (offset * cos_angle) - (half_length * sin_angle));
+                Point newStart(center.x() + (offset * sin_angle) - (length * cos_angle),
+                            center.y() - (offset * cos_angle) - (length * sin_angle));
 
-                Point newEnd(center.x() + (offset * sin_angle) + (half_length * cos_angle),
-                            center.y() - (offset * cos_angle) + (half_length * sin_angle));
+                Point newEnd(center.x() + (offset * sin_angle) + (length * cos_angle),
+                            center.y() - (offset * cos_angle) + (length * sin_angle));
 
                 // Add the new start and end points to the swath line
                 swathLine.push_back(newStart);
