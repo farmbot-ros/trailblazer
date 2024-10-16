@@ -16,6 +16,7 @@
 #include <map>
 #include <set>
 #include <limits>
+#include <iostream>
 
 namespace farmtrax {
     namespace bg = boost::geometry;
@@ -148,13 +149,24 @@ namespace farmtrax {
                 }
 
                 if (next_swath) {
-                    // Add transition path
+                    // Add transition path (TURN)
                     LineString transition_path;
                     transition_path.push_back(current_point);
                     transition_path.push_back(next_swath->swath.front());
-                    traversal_.push_back({ transition_path, SwathType::TURN, "" }); // Transition is a TURN
 
-                    // Add the next swath
+                    // Create a Swath for the transition
+                    Swath transition_swath;
+                    transition_swath.swath = transition_path;
+                    transition_swath.uuid = generate_UUID();
+                    transition_swath.type = SwathType::TURN;
+                    transition_swath.transportlane = true; // Assuming transitions are transport lanes
+                    transition_swath.length = bg::length(transition_path);
+                    transition_swath.direction = Direction::FORWARD; // Direction may not be critical here
+
+                    // Add the transition swath to traversal
+                    traversal_.push_back({ transition_swath.swath, transition_swath.type, transition_swath.uuid });
+
+                    // Add the next swath to traversal
                     traversal_.push_back({ next_swath->swath, next_swath->type, next_swath->uuid });
                     visited_swaths.insert(next_swath->uuid);
                     current_swath = next_swath;
@@ -163,6 +175,11 @@ namespace farmtrax {
                     break;
                 }
             }
+        }
+
+        // Function to generate a unique identifier
+        std::string generate_UUID() const {
+            return boost::uuids::to_string(boost::uuids::random_generator()());
         }
 
         // Function to get the traversal steps
@@ -176,9 +193,10 @@ namespace farmtrax {
                 if (step.type == SwathType::LINE) {
                     std::cout << "Traverse Swath UUID: " << step.swath_uuid << std::endl;
                 } else if (step.type == SwathType::TURN) {
-                    std::cout << "Transition Movement" << std::endl;
+                    std::cout << "Transition Movement (TURN), UUID: " << step.swath_uuid << std::endl;
                 }
                 // Optionally, output the path coordinates
+                // std::cout << "Path coordinates: " << bg::wkt(step.path) << std::endl;
             }
         }
     };
