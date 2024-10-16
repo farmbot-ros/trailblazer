@@ -11,11 +11,7 @@
 
 // Include Boost libraries for graph and R-tree
 #include <boost/geometry/index/rtree.hpp>
-#include <boost/graph/adjacency_list.hpp>
-#include <boost/graph/dijkstra_shortest_paths.hpp>
 #include <boost/graph/prim_minimum_spanning_tree.hpp>
-#include <boost/graph/graph_traits.hpp>
-#include <boost/graph/connected_components.hpp>
 
 #include <boost/uuid/uuid.hpp>            // uuid class
 #include <boost/uuid/uuid_generators.hpp> // generators
@@ -43,16 +39,6 @@ namespace farmtrax {
     // Define a multi-polygon type
     typedef bg::model::multi_polygon<Polygon> Multipolygon;
 
-    typedef boost::adjacency_list<
-        boost::vecS, 
-        boost::vecS, 
-        boost::undirectedS,
-        boost::no_property, 
-        boost::property<boost::edge_weight_t, double>> Graph;
-
-    typedef boost::graph_traits<Graph>::vertex_descriptor Vertex;
-    typedef boost::graph_traits<Graph>::edge_descriptor Edge;
-
     // Enum class to represent different types of swaths
     enum class SwathType {
         LAND,
@@ -70,8 +56,7 @@ namespace farmtrax {
         LineString swath;         // The actual swath line (geometry)
         std::string uuid;         // A unique identifier for each swath
         SwathType type;           // The type of swath (LAND, HEAD, PATH)
-        Point head;               // The head point of the swath
-        Point tail;               // The tail point of the swath
+        Direction direction;      // The direction of the swath (FORWARD, REVERSE)
         bool transportlane;       // Flag to indicate if it's a transport lane
         float length;             // Length of the swath
     };
@@ -88,31 +73,30 @@ namespace farmtrax {
         double angle_degrees_;
         std::vector<Swath> swaths_;  // Holds Swath structs
         Rtree swath_rtree_;          // R-tree for efficient spatial querying of swaths
-        Graph swath_graph_;          // Graph to represent the swaths
 
     public:
         Swaths() = default;
 
         // Constructor to initialize with a field and swath width
         Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees) {
-            genSwaths(outer_field, inner_field, swath_width, angle_degrees);
+            gen_swaths(outer_field, inner_field, swath_width, angle_degrees);
         }
 
-        void genSwaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees) {
+        void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees) {
             outer_field_ = outer_field;
             inner_field_ = inner_field;
             swath_width_ = swath_width;
             angle_degrees_ = angle_degrees;
-            generateSwaths();
+            generate_swaths();
         }
 
         // Get the swaths as a vector of Swath structs
-        std::vector<Swath> getSwaths() const {
+        std::vector<Swath> get_swaths() const {
             return swaths_;
         }
 
         // Query swaths intersecting a given bounding box
-        std::vector<std::size_t> querySwaths(const Box& query_box) const {
+        std::vector<std::size_t> query_swaths(const Box& query_box) const {
             std::vector<RtreeValue> result_s;
             swath_rtree_.query(bgi::intersects(query_box), std::back_inserter(result_s));
 
@@ -125,7 +109,7 @@ namespace farmtrax {
         }
 
         // Find the nearest swath to a given point
-        std::size_t nearestSwath(const Point& point) const {
+        std::size_t nearest_swath(const Point& point) const {
             std::vector<RtreeValue> result_s;
             swath_rtree_.query(bgi::nearest(point, 1), std::back_inserter(result_s));
 
@@ -135,15 +119,26 @@ namespace farmtrax {
                 throw std::runtime_error("No swaths available.");
             }
         }
+        
+        //check if two points are connected by a swath
+        bool are_connected(const Point& p1, const Point& p2) {
+            LineString connection = create_connection(p1, p2);
+            for (const auto& swath : swaths_) {
+                if (bg::intersects(connection, swath.swath)) {
+                    return true;
+                }
+            }
+            return false;
+        }
 
     private:
         // Helper function to generate swaths with a specified angle
-        void generateSwaths() {
+        void generate_swaths(int alternate_freq = 1) {
             swaths_.clear();
             swath_rtree_.clear(); // Clear existing entries
 
-            Field new_field = inner_field_.getBuffered(0.5, farmtrax::BufferType::ENLARGE);
-            Polygon fieldPolygon = new_field.getPolygon();
+            Field new_field = inner_field_.get_buffered(0.5, farmtrax::BufferType::ENLARGE);
+            Polygon fieldPolygon = new_field.get_polygon();
 
             // Get the bounding box of the field
             boost::geometry::model::box<Point> boundingBox;
@@ -163,24 +158,26 @@ namespace farmtrax {
 
             // Iterate to generate swaths with a defined offset based on swath width
             bool alternate = true;
+            int counter = 0;
             for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width_) {
-                LineString swathLine = generateSwathLine(centerPoint, angle_radians, offset);
-
+                counter++;
+                // Alternate the direction of the swaths based on the frequency
+                alternate = (counter % alternate_freq == 0) ? !alternate : alternate;
+                LineString swathLine = generate_swathine(centerPoint, angle_radians, offset);
                 // Clip the swath line to fit within the field polygon
+
                 std::vector<LineString> clipped;
                 boost::geometry::intersection(swathLine, fieldPolygon, clipped);
-
                 // Keep all valid segments of the swath that intersect the field polygon
-                alternate = !alternate;
+
                 for (const auto& segment : clipped) {
                     Swath swath;  // Create a Swath struct for each segment
                     swath.swath = segment;
-                    swath.uuid = generateUUID();  // Generate a unique ID for each swath
+                    swath.uuid = generate_UUID();  // Generate a unique ID for each swath
                     swath.type = SwathType::LAND; // Always mark as LAND here
                     swath.transportlane = false;  // Default, can modify as needed
                     swath.length = bg::length(segment); // Calculate the length of the swath
-                    swath.head = alternate ? segment.front() : segment.back();
-                    swath.tail = alternate ? segment.back() : segment.front();
+                    swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
                     swaths_.push_back(swath);
 
                     // Insert the swath into the R-tree
@@ -189,60 +186,10 @@ namespace farmtrax {
                     swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                 }
             }       
-            auto headlands_ = headlands();
-            for (const auto& headland : headlands_) {
-                swaths_.push_back(headland);
-                Box swath_box;
-                boost::geometry::envelope(headland.swath, swath_box);
-                swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
-            }
-        }
-
-        std::vector<Swath> headlands() {
-            std::vector<Swath> headlands;
-            for (const auto& swath : swaths_) {
-                // for each swath, check if head is close to any other swath tail
-                for (const auto& other_swath : swaths_) {
-                    if (swath.uuid == other_swath.uuid) {
-                        continue;
-                    }
-                    if (bg::distance(swath.head, other_swath.tail) <= swath_width_/0.2) {
-                        LineString connection = createConnection(swath.head, other_swath.tail);
-                        Swath connecting_swath;
-                        connecting_swath.swath = connection;
-                        connecting_swath.uuid = generateUUID();
-                        connecting_swath.type = SwathType::HEAD;
-                        connecting_swath.transportlane = false;
-                        connecting_swath.length = bg::length(connection);
-                        connecting_swath.head = connection.front();
-                        connecting_swath.tail = connection.back();
-                        if (!intersectsField(connection, outer_field_)) {
-                            headlands.push_back(connecting_swath);
-                        }
-                    }
-                }
-            }
-            return headlands;
-        }
-
-        // Helper function to create the graph
-        void createGraph() {
-            size_t num_swaths = swaths_.size();
-            for (size_t i = 0; i < num_swaths; ++i) {
-                boost::add_vertex(swath_graph_);
-            }
-
-            // Add edges with weights based on distance
-            for (size_t i = 0; i < num_swaths; ++i) {
-                for (size_t j = i + 1; j < num_swaths; ++j) {
-                    double distance = bg::distance(swaths_[i].swath, swaths_[j].swath);
-                    boost::add_edge(i, j, distance, swath_graph_);
-                }
-            }
         }
 
         // Function to generate a line at a certain offset from the center, adjusted for the angle
-        LineString generateSwathLine(const Point& center, double angle_radians, double offset) const {
+        LineString generate_swathine(const Point& center, double angle_radians, double offset) const {
             LineString swathLine;
 
             // Calculate the perpendicular offset direction based on the angle
@@ -250,7 +197,7 @@ namespace farmtrax {
             double sin_angle = std::sin(angle_radians);
 
             // Define the half-length of the swath lines (to extend equally from the center)
-            double half_length = std::max(outer_field_.getWidth(), outer_field_.getHeight());
+            double half_length = std::max(outer_field_.get_width(), outer_field_.get_height());
 
             // Calculate the start and end points of the swath line
             Point newStart(center.x() + (offset * sin_angle) - (half_length * cos_angle),
@@ -267,7 +214,7 @@ namespace farmtrax {
         }
 
         // Function to create a connection between two points
-        LineString createConnection(const Point& p1, const Point& p2) const {
+        LineString create_connection(const Point& p1, const Point& p2) const {
             LineString connection;
             connection.push_back(p1);
             connection.push_back(p2);
@@ -275,10 +222,10 @@ namespace farmtrax {
         }
 
         // Function to add a connecting swath to the swath list
-        void addConnectingSwath(const LineString& connection) {
+        void add_connecting_swath(const LineString& connection) {
             Swath connecting_swath;
             connecting_swath.swath = connection;
-            connecting_swath.uuid = generateUUID();
+            connecting_swath.uuid = generate_UUID();
             connecting_swath.type = SwathType::HEAD;  // Only connections are labeled as HEAD
             connecting_swath.transportlane = false;   // Can be modified as needed
             swaths_.push_back(connecting_swath);
@@ -290,13 +237,13 @@ namespace farmtrax {
         }
 
         // Function to generate a unique identifier for each swath
-        std::string generateUUID() const {
+        std::string generate_UUID() const {
             return boost::uuids::to_string(boost::uuids::random_generator()());
         }
 
         //function that cheks if swath touches perimeter of the field
-        bool intersectsField(const LineString& swath, const Field& field) {
-            auto edges = field.getEdges();
+        bool intersects_field(const LineString& swath, const Field& field) {
+            auto edges = field.get_edges();
             for (const auto& edge : edges) {
                 if (bg::intersects(swath, edge)) {
                     return true;

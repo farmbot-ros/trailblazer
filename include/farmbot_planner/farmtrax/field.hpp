@@ -51,11 +51,11 @@ namespace farmtrax {
 
             // Initialize with a list of (x, y) coordinates
             Field(const std::vector<std::pair<double, double>>& coordinates) {
-                setBoundary(coordinates);
+                gen_field(coordinates);
             }
 
             // Set the boundary of the field using a list of (x, y) coordinates
-            void setBoundary(const std::vector<std::pair<double, double>>& coordinates) {
+            void gen_field(const std::vector<std::pair<double, double>>& coordinates) {
                 if (coordinates.size() < 3) {
                     throw std::invalid_argument("A polygon must have at least 3 points.");
                 }
@@ -91,7 +91,7 @@ namespace farmtrax {
             }
 
             // Get the boundary of the field as a vector of (x, y) coordinates
-            std::vector<std::pair<double, double>> getBoundary() const {
+            std::vector<std::pair<double, double>> get_border_points() const {
                 std::vector<std::pair<double, double>> boundary;
                 for (const auto& point : polygon_.outer()) {
                     boundary.emplace_back(point.x(), point.y());
@@ -100,27 +100,27 @@ namespace farmtrax {
             }
 
             // Get the polygon representing the field
-            const Polygon& getPolygon() const {
+            const Polygon& get_polygon() const {
                 return polygon_;
             }
 
             //get edges of the field
-            const std::vector<LineString>& getEdges() const {
+            const std::vector<LineString>& get_edges() const {
                 return edges_;
             }
 
             // Calculate the area of the field
-            double getArea() const {
+            double get_area() const {
                 return bg::area(polygon_);
             }
 
             // Calculate the perimeter of the field
-            double getPerimeter() const {
+            double get_perimeter() const {
                 return bg::perimeter(polygon_);
             }
 
             // Calculate the longest side of the field polygon
-            double getLongestSide() const {
+            double get_longest_side() const {
                 double max_length = 0.0;
                 const auto& points = polygon_.outer();
                 if (points.size() < 2) {
@@ -168,30 +168,30 @@ namespace farmtrax {
                 return false;
             }
 
-            Field getBuffered(double distance, BufferType type) const {
+            Field get_buffered(double distance, BufferType type) const {
                 switch (type) {
                     case BufferType::SHRINK:
-                        return getShrunkField(distance);
+                        return get_shrunk_field(distance);
                     case BufferType::ENLARGE:
-                        return getEnlargedField(distance);
+                        return get_enlarged_field(distance);
                     default:
                         throw std::invalid_argument("Invalid buffer type.");
                 }
             }
 
             // Get the width of the field (x-axis)
-            double getWidth() const {
+            double get_width() const {
                 return width_;
             }
             
             // Get the height of the field (y-axis)
-            double getHeight() const {
+            double get_height() const {
                 return height_;
             }
 
         private:
             // Generate a new Field that is "x" meters smaller from every border
-            Field getShrunkField(double x) const {
+            Field get_shrunk_field(double x) const {
                 if (x < 0) {
                     throw std::invalid_argument("Shrink distance must be non-negative.");
                 }
@@ -235,12 +235,12 @@ namespace farmtrax {
                 for (const auto& point : largest->outer()) {
                     shrunkBoundary.emplace_back(point.x(), point.y());
                 }
-                shrunkField.setBoundary(shrunkBoundary);
+                shrunkField.gen_field(shrunkBoundary);
                 return shrunkField;
             }
 
             // Generate a new Field that is "x" meters larger from every border
-            Field getEnlargedField(double x) const {
+            Field get_enlarged_field(double x) const {
                 if (x < 0) {
                     throw std::invalid_argument("Enlargement distance must be non-negative.");
                 }
@@ -288,7 +288,7 @@ namespace farmtrax {
                     enlargedBoundary.emplace_back(point.x(), point.y());
                 }
 
-                enlargedField.setBoundary(enlargedBoundary);
+                enlargedField.gen_field(enlargedBoundary);
                 return enlargedField;
             }
     };

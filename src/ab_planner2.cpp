@@ -182,18 +182,18 @@ private:
         // std::tie(outer_polygon_, inner_polygon_) = field_.get_polygons();
         // RCLCPP_INFO(this->get_logger(), "Generated %lu segments.", segments.segments.size());
 
-        field_.setBoundary(points);
-        farmtrax::Field hl = field_.getBuffered(vehicle_width_*6.0, farmtrax::BufferType::SHRINK);
+        field_.gen_field(points);
+        farmtrax::Field hl = field_.get_buffered(vehicle_width_*6.0, farmtrax::BufferType::SHRINK);
         // auto hl = field_.generateHeadlands(vehicle_width_);
 
-        outer_polygon_ = vector2Polygon(field_.getBoundary());
-        inner_polygon_ = vector2Polygon(hl.getBoundary());
+        outer_polygon_ = vector2Polygon(field_.get_border_points());
+        inner_polygon_ = vector2Polygon(hl.get_border_points());
 
-        swaths_.genSwaths(field_, hl, 6.0, 90.0);
+        swaths_.gen_swaths(field_, hl, 6.0, 90.0);
         // swaths_.connectSwathsInUShape();
         // swaths_.connectSwathsWithHeadland();
-        path_ = vector2Path(swaths_.getSwaths());
-        line_marker_ = vector2Lines(swaths_.getSwaths());
+        path_ = vector2Path(swaths_.get_swaths());
+        line_marker_ = vector2Lines(swaths_.get_swaths());
 
 
         for (const auto& point : points) {
