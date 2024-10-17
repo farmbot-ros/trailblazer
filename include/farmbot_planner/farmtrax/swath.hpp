@@ -189,6 +189,7 @@ namespace farmtrax {
                 swaths_.clear();
                 swath_rtree_.clear(); // Clear existing entries
 
+
                 Field new_field = inner_field_.get_buffered(1, farmtrax::BufferType::ENLARGE);
                 Polygon fieldPolygon = new_field.get_polygon();
 
@@ -211,6 +212,7 @@ namespace farmtrax {
                 // Iterate to generate swaths with a defined offset based on swath width
                 bool alternate = true;
                 int counter = 0;
+                auto new_polygon = fieldPolygon;
                 for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width_) {
                     counter++;
                     // Alternate the direction of the swaths based on the frequency
@@ -238,13 +240,16 @@ namespace farmtrax {
                         swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
                         swaths_.push_back(swath);
 
+                        insert_point_at_closest_location(new_polygon, segment.front());
+                        insert_point_at_closest_location(new_polygon, segment.back());
+
                         // Insert the swath into the R-tree
                         Box swath_box;
                         boost::geometry::envelope(segment, swath_box);
                         swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                     }
-                } 
-                connecting_polygon_ = fieldPolygon;  
+                }
+                connecting_polygon_ = new_polygon;
             }
 
             // Function to generate a line at a certain offset from the center, adjusted for the angle
@@ -267,6 +272,45 @@ namespace farmtrax {
                 swathLine.push_back(newEnd);
 
                 return swathLine;
+            }
+
+            void insert_point_at_closest_location(Polygon& poly, const Point& p){
+                auto& outer_ring = poly.outer();
+                // Check if the ring is closed (first and last points are the same)
+                bool is_closed = !outer_ring.empty() && bg::equals(outer_ring.front(), outer_ring.back());
+                // Remove the closing point if the ring is closed
+                if (is_closed){
+                    outer_ring.pop_back();
+                }
+                // Variables to keep track of the closest segment
+                double min_distance = std::numeric_limits<double>::max();
+                size_t insert_position = 0; // Position to insert the point
+                // Iterate over the segments of the outer ring
+                for (size_t i = 0; i < outer_ring.size(); ++i){
+                    // Get the current segment
+                    Point p1 = outer_ring[i];
+                    Point p2 = outer_ring[(i + 1) % outer_ring.size()]; // Wrap around for the last segment
+                    bg::model::segment<Point> seg(p1, p2);
+                    // Compute the distance from the point to the segment
+                    double distance = bg::distance(p, seg);
+                    // Update the minimum distance and insertion position if necessary
+                    if (distance < min_distance){
+                        min_distance = distance;
+                        insert_position = i + 1; // Insert after point i
+                    }
+                }
+                // Insert the point at the determined position
+                outer_ring.insert(outer_ring.begin() + insert_position, p);
+                // Close the ring by adding the first point at the end
+                if (outer_ring.size() >= 3){
+                    outer_ring.push_back(outer_ring.front());
+                }
+                // Optional: Correct the polygon to ensure validity (orientation, closure)
+                bg::correct(poly);
+                // Check if the polygon is valid
+                if (!bg::is_valid(poly)){
+                    throw std::runtime_error("Polygon is invalid after insertion.");
+                }
             }
 
             // Function to create a connection between two points

@@ -178,109 +178,43 @@ namespace farmtrax {
             }
         }
 
-        // Function to project point 'p' onto segment 'seg' and store the result in 'projected_p'
-        void project_point_onto_segment(const Point& p, const bg::model::segment<Point>& seg, Point& projected_p) {
-            double x1 = seg.first.x();
-            double y1 = seg.first.y();
-            double x2 = seg.second.x();
-            double y2 = seg.second.y();
-            double x0 = p.x();
-            double y0 = p.y();
-
-            double dx = x2 - x1;
-            double dy = y2 - y1;
-            double length_squared = dx * dx + dy * dy;
-
-            // If the segment is a point
-            if (length_squared == 0.0)
-            {
-                projected_p = seg.first;
-                return;
-            }
-
-            // Parameter t indicates the position of the projection on the segment
-            double t = ((x0 - x1) * dx + (y0 - y1) * dy) / length_squared;
-
-            // Clamp t to the segment range [0, 1]
-            if (t < 0.0)
-                t = 0.0;
-            else if (t > 1.0)
-                t = 1.0;
-
-            // Compute the projected point
-            projected_p.x(x1 + t * dx);
-            projected_p.y(y1 + t * dy);
-        }
-
-        // Function to compute the distance along the perimeter between two points
         double perimeter_distance(const Point& p1, const Point& p2){
-            // Get the outer ring of the polygon
             const auto& ring = bg::exterior_ring(headland_path_);
-
-            // Compute cumulative distances along the ring
-            std::vector<double> cumulative_lengths(ring.size(), 0.0);
-            for (size_t i = 1; i < ring.size(); ++i)
-            {
-                double segment_length = bg::distance(ring[i - 1], ring[i]);
-                cumulative_lengths[i] = cumulative_lengths[i - 1] + segment_length;
-            }
-
-            double total_perimeter_length = cumulative_lengths.back();
-
-            // Helper function to compute the position along the perimeter
-            auto compute_position_along_perimeter = [&](const Point& p) -> double
-            {
-                // Check if the point lies exactly on any vertex
-                for (size_t i = 0; i < ring.size(); ++i)
-                {
-                    if (bg::equals(p, ring[i]))
-                    {
-                        return cumulative_lengths[i];
+            // Function to find the position of a point along the perimeter
+            auto find_position = [&](const Point& p) -> double {
+                double cumulative_length = 0.0;
+                for (size_t i = 0; i < ring.size() - 1; ++i){
+                    const Point& seg_start = ring[i];
+                    const Point& seg_end = ring[i + 1];
+                    // Check if the point lies on the current segment
+                    if (bg::covered_by(p, bg::model::segment<Point>(seg_start, seg_end))) {
+                        // Calculate the distance from seg_start to p
+                        double segment_length = bg::distance(seg_start, seg_end);
+                        double distance_to_p = bg::distance(seg_start, p);
+                        return cumulative_length + distance_to_p;
                     }
+                    // Add the length of the current segment to cumulative_length
+                    cumulative_length += bg::distance(seg_start, seg_end);
                 }
-
-                double min_distance = std::numeric_limits<double>::max();
-                double position = -1.0;
-
-                // Iterate over segments to find the closest projection
-                for (size_t i = 1; i < ring.size(); ++i)
-                {
-                    bg::model::segment<Point> seg(ring[i - 1], ring[i]);
-                    Point projected_p;
-                    project_point_onto_segment(p, seg, projected_p);
-                    double dist = bg::distance(p, projected_p);
-
-                    // Check if the projected point lies on the segment
-                    if (bg::covered_by(projected_p, seg))
-                    {
-                        if (dist < min_distance)
-                        {
-                            min_distance = dist;
-                            double dist_to_p = cumulative_lengths[i - 1] + bg::distance(ring[i - 1], projected_p);
-                            position = dist_to_p;
-                        }
-                    }
-                }
-
-                // If position is still -1, the point is not projected onto any segment
-                if (position == -1.0)
-                {
-                    throw std::runtime_error("Point cannot be projected onto the polygon perimeter.");
-                }
-
-                return position;
+                throw std::invalid_argument("Point is not on the perimeter of the polygon.");
             };
 
-            double pos_p1 = compute_position_along_perimeter(p1);
-            double pos_p2 = compute_position_along_perimeter(p2);
+            // Find positions of p1 and p2 along the perimeter
+            double pos_p1 = find_position(p1);
+            double pos_p2 = find_position(p2);
 
-            // Compute distances along the perimeter in both directions
+            // Calculate total perimeter length
+            double total_perimeter = 0.0;
+            for (size_t i = 0; i < ring.size() - 1; ++i){
+                total_perimeter += bg::distance(ring[i], ring[i + 1]);
+            }
+            // Calculate clockwise and counter-clockwise distances
             double dist_clockwise = std::abs(pos_p2 - pos_p1);
-            double dist_counter_clockwise = total_perimeter_length - dist_clockwise;
-
+            double dist_counter_clockwise = total_perimeter - dist_clockwise;
             // Return the minimal distance
-            return std::min(dist_clockwise, dist_counter_clockwise);
+            return std::min(dist_clockwise, dist_counter_clockwise) * 2;
         }
+
 
         // Function to compute the traversal path covering all swaths
         void compute_shortest_traversal() {
