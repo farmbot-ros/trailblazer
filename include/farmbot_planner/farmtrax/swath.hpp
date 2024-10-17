@@ -143,6 +143,11 @@ namespace farmtrax {
                 return boundary;
             }
 
+            // get connecting polygon as a polygon
+            const Polygon get_connecting_polygon() const {
+                return connecting_polygon_;
+            }
+
             void insert_headlands(std::vector<std::pair<std::string, Swath>> swaths_with_uuid) {
                 for (const auto& swath_with_uuid : swaths_with_uuid) {
                     const std::string& uuid = swath_with_uuid.first;
