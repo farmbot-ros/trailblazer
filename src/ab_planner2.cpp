@@ -46,8 +46,8 @@ private:
     farmtrax::Swaths swaths_;
     farmtrax::Route route_;
 
-    farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
+    farmbot_interfaces::msg::Segments segments_;
     visualization_msgs::msg::Marker line_marker_;
     visualization_msgs::msg::MarkerArray arrow_marker_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
@@ -331,7 +331,6 @@ private:
             arrow.scale.x = 0.2;  // Shaft diameter
             arrow.scale.y = 1;    // Head diameter
             arrow.scale.z = 2.0;  // Head length
-
             // Calculate color based on the current id and total number of swaths
             float ratio = static_cast<float>(id) / num_swaths;  // Normalize id to [0, 1]
             if (ratio < 0.5) {
@@ -346,9 +345,7 @@ private:
                 arrow.color.b = 1.0f;  // Blue stays at max
             }
             arrow.color.a = 1.0f;  // Fully opaque
-
             arrow.lifetime = rclcpp::Duration::from_seconds(0);
-
             geometry_msgs::msg::Point p1;
             p1.x = swath.swath[0].x();
             p1.y = swath.swath[0].y();
@@ -364,9 +361,6 @@ private:
         }
         return markers;
     }
-
-
-
 };
 
 

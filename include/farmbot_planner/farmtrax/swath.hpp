@@ -73,6 +73,7 @@ namespace farmtrax {
             std::vector<Swath> swaths_;  // Holds Swath structs
             Rtree swath_rtree_;          // R-tree for efficient spatial querying of swaths
             Polygon connecting_polygon_; // Polygon to represent the connecting swath
+            Polygon without_segments_;   // Polygon to represent the field without the segment points
 
         public:
             Swaths() = default;
@@ -148,6 +149,11 @@ namespace farmtrax {
                 return connecting_polygon_;
             }
 
+            //get field without segments
+            const Polygon get_without_segments() const {
+                return without_segments_;
+            }
+
             void insert_headlands(std::vector<std::pair<std::string, Swath>> swaths_with_uuid) {
                 for (const auto& swath_with_uuid : swaths_with_uuid) {
                     const std::string& uuid = swath_with_uuid.first;
@@ -213,6 +219,7 @@ namespace farmtrax {
                 bool alternate = true;
                 int counter = 0;
                 auto new_polygon = fieldPolygon;
+                without_segments_ = fieldPolygon;
                 for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width_) {
                     counter++;
                     // Alternate the direction of the swaths based on the frequency

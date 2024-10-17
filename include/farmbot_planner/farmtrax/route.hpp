@@ -88,6 +88,11 @@ namespace farmtrax {
             compute_shortest_traversal();
         }
 
+        //get the new swaths
+        Swaths get_swaths() const {
+            return new_swaths_;
+        }
+
         // Function to build the graph from the swaths
         void build_graph() {
             const std::vector<Swath>& swaths = swaths_.get_swaths();
@@ -189,7 +194,6 @@ namespace farmtrax {
                     // Check if the point lies on the current segment
                     if (bg::covered_by(p, bg::model::segment<Point>(seg_start, seg_end))) {
                         // Calculate the distance from seg_start to p
-                        double segment_length = bg::distance(seg_start, seg_end);
                         double distance_to_p = bg::distance(seg_start, p);
                         return cumulative_length + distance_to_p;
                     }
@@ -202,7 +206,6 @@ namespace farmtrax {
             // Find positions of p1 and p2 along the perimeter
             double pos_p1 = find_position(p1);
             double pos_p2 = find_position(p2);
-
             // Calculate total perimeter length
             double total_perimeter = 0.0;
             for (size_t i = 0; i < ring.size() - 1; ++i){
@@ -212,7 +215,7 @@ namespace farmtrax {
             double dist_clockwise = std::abs(pos_p2 - pos_p1);
             double dist_counter_clockwise = total_perimeter - dist_clockwise;
             // Return the minimal distance
-            return std::min(dist_clockwise, dist_counter_clockwise) * 2;
+            return std::min(dist_clockwise, dist_counter_clockwise);
         }
 
 
@@ -325,18 +328,6 @@ namespace farmtrax {
                 // Optionally, output the path coordinates
                 // std::cout << "Path coordinates: " << bg::wkt(step.path) << std::endl;
             }
-        }
-
-        LineString create_segment(const Point& start_point, const Point& end_point) {
-            LineString segment;
-            segment.push_back(start_point);
-            segment.push_back(end_point);
-            return segment;
-        }
-
-        //get the new swaths
-        Swaths get_swaths() const {
-            return new_swaths_;
         }
 
     };
