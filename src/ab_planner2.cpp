@@ -333,15 +333,15 @@ private:
             // Calculate color based on the current id and total number of swaths
             float ratio = static_cast<float>(id) / num_swaths;  // Normalize id to [0, 1]
             if (ratio < 0.5) {
-                // Green to Blue transition
-                arrow.color.r = 0.0f;
-                arrow.color.g = 1.0f - 2.0f * ratio;
-                arrow.color.b = 2.0f * ratio;
+                // Orange (1.0, 0.5, 0.0) to Cyan (0.0, 1.0, 1.0) transition
+                arrow.color.r = 1.0f - 2.0f * ratio;  // Decrease red
+                arrow.color.g = 0.5f + 1.0f * ratio;  // Increase green
+                arrow.color.b = 2.0f * ratio;         // Increase blue
             } else {
-                // Blue to Red transition
-                arrow.color.r = 2.0f * (ratio - 0.5f);
-                arrow.color.g = 0.0f;
-                arrow.color.b = 1.0f - 2.0f * (ratio - 0.5f);
+                // Cyan (0.0, 1.0, 1.0) to Magenta (1.0, 0.0, 1.0) transition
+                arrow.color.r = 2.0f * (ratio - 0.5f);  // Increase red
+                arrow.color.g = 1.0f - 2.0f * (ratio - 0.5f);  // Decrease green
+                arrow.color.b = 1.0f;  // Blue stays at max
             }
             arrow.color.a = 1.0f;  // Fully opaque
 

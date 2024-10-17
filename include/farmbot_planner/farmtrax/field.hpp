@@ -195,13 +195,14 @@ namespace farmtrax {
                 if (x < 0) {
                     throw std::invalid_argument("Shrink distance must be non-negative.");
                 }
-                // Define buffer strategies with the correct end strategy
-                // Negative distance for shrinking
+
+                // Define buffer strategies with straight edges
                 bg::strategy::buffer::distance_symmetric<double> distance_strategy(-x);
                 bg::strategy::buffer::side_straight side_strategy;
-                bg::strategy::buffer::join_round join_strategy;
-                bg::strategy::buffer::end_round end_strategy;
-                bg::strategy::buffer::point_circle point_strategy(8); // 8 points per circle for smoothness
+                bg::strategy::buffer::join_miter join_strategy;
+                bg::strategy::buffer::end_flat end_strategy;
+                bg::strategy::buffer::point_square point_strategy;
+
                 // Perform buffering with negative distance to shrink the polygon
                 Multipolygon result;
                 bg::buffer(
@@ -213,9 +214,11 @@ namespace farmtrax {
                     end_strategy,
                     point_strategy
                 );
+
                 if (result.empty()) {
                     throw std::runtime_error("Shrinking resulted in an empty field.");
                 }
+
                 // Select the largest polygon from the result
                 const Polygon* largest = nullptr;
                 double max_area = -std::numeric_limits<double>::max();
@@ -226,9 +229,11 @@ namespace farmtrax {
                         largest = &poly;
                     }
                 }
+
                 if (!largest) {
                     throw std::runtime_error("Failed to determine the largest polygon after shrinking.");
                 }
+
                 // Convert the largest polygon back to a Field
                 Field shrunkField;
                 std::vector<std::pair<double, double>> shrunkBoundary;

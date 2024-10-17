@@ -72,6 +72,7 @@ namespace farmtrax {
             double angle_degrees_;
             std::vector<Swath> swaths_;  // Holds Swath structs
             Rtree swath_rtree_;          // R-tree for efficient spatial querying of swaths
+            Polygon connecting_polygon_; // Polygon to represent the connecting swath
 
         public:
             Swaths() = default;
@@ -133,6 +134,15 @@ namespace farmtrax {
                 return false;
             }
 
+            //get connecting polygon
+            const std::vector<std::pair<double,double>> get_connecting_polygon() const {
+                std::vector<std::pair<double, double>> boundary;
+                for (const auto& point : connecting_polygon_.outer()) {
+                    boundary.emplace_back(point.x(), point.y());
+                }
+                return boundary;
+            }
+
             void insert_headlands(std::vector<std::pair<std::string, Swath>> swaths_with_uuid) {
                 for (const auto& swath_with_uuid : swaths_with_uuid) {
                     const std::string& uuid = swath_with_uuid.first;
@@ -174,7 +184,7 @@ namespace farmtrax {
                 swaths_.clear();
                 swath_rtree_.clear(); // Clear existing entries
 
-                Field new_field = inner_field_.get_buffered(0.5, farmtrax::BufferType::ENLARGE);
+                Field new_field = inner_field_.get_buffered(1, farmtrax::BufferType::ENLARGE);
                 Polygon fieldPolygon = new_field.get_polygon();
 
                 // Get the bounding box of the field
@@ -223,12 +233,19 @@ namespace farmtrax {
                         swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
                         swaths_.push_back(swath);
 
+                        //if Swath points are not in polygon, then add to polygon
+                        if (!intersects_field(segment, outer_field_)) {
+                            connecting_polygon_.outer().push_back(segment.front());
+                            connecting_polygon_.outer().push_back(segment.back());
+                        }
+
                         // Insert the swath into the R-tree
                         Box swath_box;
                         boost::geometry::envelope(segment, swath_box);
                         swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                     }
-                }       
+                } 
+                connecting_polygon_ = fieldPolygon;      
             }
 
             // Function to generate a line at a certain offset from the center, adjusted for the angle
@@ -276,6 +293,8 @@ namespace farmtrax {
                 }
                 return false;
             }
+
+            
     };
 
 } // namespace farmtrax
