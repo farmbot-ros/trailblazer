@@ -26,6 +26,7 @@ cmake_policy(SET CMP0074 NEW)
 set(executables
     # ab_planner
     ab_planner2
+    goto_field
 )
 
 set (utils
@@ -81,6 +82,8 @@ add_definitions(${PCL_DEFINITIONS})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/usr/share/cmake/geographiclib/")
 find_package(GeographicLib REQUIRED)
 find_package(nlohmann_json REQUIRED)
+#find curl
+find_package(CURL REQUIRED)
 
 
 set(dependencies_sys
@@ -91,6 +94,7 @@ set(dependencies_sys
     ${GDAL_LIBRARIES}
     nlohmann_json::nlohmann_json
     ${GeographicLib_LIBRARIES}
+    ${CURL_LIBRARIES}
 )
 
 foreach(util ${utils})

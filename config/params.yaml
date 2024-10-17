@@ -11,3 +11,9 @@ ab_planner:
     vehicle_coverage: 4.0
     alternate_freq: 1  # every 1 row
     path_angle: 80.0 # degrees
+
+goto_field:
+  ros__parameters:
+    name: 'goto_field'
+    topic_prefix: '/fb'
+    osrm_server_url: 'http://router.project-osrm.org'
