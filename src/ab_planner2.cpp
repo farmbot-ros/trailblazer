@@ -194,7 +194,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
 
-        route_.set_swaths(swaths_);
+        route_.gen_route(swaths_);
         auto swaths_with_headlands = route_.get_swaths();
         // outer_polygon_ = vector2Polygon(route_.get_headland_points());
         // path_ = vector2Path(swaths_with_headlands.get_swaths());

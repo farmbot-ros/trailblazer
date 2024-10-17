@@ -43,12 +43,13 @@ namespace farmtrax {
     enum class SwathType {
         LINE,
         TURN,
-        PATH
+        ROAD
     };
 
     enum class Direction {
         FORWARD,
-        REVERSE
+        REVERSE,
+        BOTH
     };
 
     // Struct to represent each swath, along with its properties
@@ -60,6 +61,11 @@ namespace farmtrax {
         Direction direction;      // The direction of the swath (FORWARD, REVERSE)
         bool transportlane;       // Flag to indicate if it's a transport lane
         float length;             // Length of the swath
+
+        bool intersects(const Field& field) const {
+            Polygon fieldPolygon = field.get_polygon();
+            return bg::intersects(fieldPolygon, swath);
+        }
     };
 
     // R-tree type definitions
@@ -97,6 +103,18 @@ namespace farmtrax {
             // Add a swath to the list of swaths
             void add_swath(const Swath& swath) {
                 swaths_.push_back(swath);
+            }
+
+            // add to nth index
+            void add_swath(const Swath& swath, int index) {
+                swaths_.insert(swaths_.begin() + index, swath);
+            }
+
+            // If swath intersects with field
+            bool intersects_field(const Field& field, const Swath& swath) {
+                Polygon fieldPolygon = field.get_polygon();
+                LineString swathLine = swath.swath;
+                return boost::geometry::intersects(fieldPolygon, swathLine);
             }
 
             // Query swaths intersecting a given bounding box
@@ -152,23 +170,6 @@ namespace farmtrax {
             //get field without segments
             const Polygon get_without_segments() const {
                 return without_segments_;
-            }
-
-            void insert_headlands(std::vector<std::pair<std::string, Swath>> swaths_with_uuid) {
-                for (const auto& swath_with_uuid : swaths_with_uuid) {
-                    const std::string& uuid = swath_with_uuid.first;
-                    const Swath& swath = swath_with_uuid.second;
-
-                    // Find the index of the swath with the given UUID
-                    auto it = std::find_if(swaths_.begin(), swaths_.end(), [uuid](const Swath& s) {
-                        return s.uuid == uuid;
-                    });
-                    if (it != swaths_.end()) {
-                        add_swath(swath.swath, SwathType::TURN, std::distance(swaths_.begin(), it));
-                    } else {
-                        add_swath(swath.swath, SwathType::TURN);
-                    }
-                }
             }
 
             // Function to add a connecting swath to the swath list
