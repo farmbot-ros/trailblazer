@@ -25,6 +25,8 @@ namespace farmtrax {
     typedef bg::model::d2::point_xy<double> Point;
     // Define linestring type for edges
     typedef bg::model::linestring<Point> LineString;
+    // Polygon type for field boundary
+    typedef bg::model::polygon<Point> Polygon;
 
     // Comparator for Point
     struct PointComparator {
@@ -42,8 +44,9 @@ namespace farmtrax {
 
     class Route {
     private:
-        Swaths swaths_;       // Original swaths provided to the Route
-        Swaths new_swaths_;   // Swaths including transitions (new swaths)
+        Swaths swaths_;                                         // Original swaths provided to the Route
+        Swaths new_swaths_;                                     // Swaths including transitions (new swaths)
+        std::vector<std::pair<double,double>> headland_path_;   // Field boundary polygon
 
         // Define the Boost Graph types
         typedef boost::adjacency_list<
@@ -73,14 +76,14 @@ namespace farmtrax {
         Route() = default;
 
         // Constructor that initializes the route with swaths
-        Route(const Swaths& swaths) : swaths_(swaths), new_swaths_() {
-            build_graph();
-            compute_shortest_traversal();
+        Route(const Swaths& swaths){
+            set_swaths(swaths);
         }
 
         // Set the swaths for the route
         void set_swaths(const Swaths& swaths) {
             swaths_ = swaths;
+            headland_path_ = swaths.get_connecting_path();
             build_graph();
             compute_shortest_traversal();
         }

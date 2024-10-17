@@ -135,7 +135,7 @@ namespace farmtrax {
             }
 
             //get connecting polygon
-            const std::vector<std::pair<double,double>> get_connecting_polygon() const {
+            const std::vector<std::pair<double,double>> get_connecting_path() const {
                 std::vector<std::pair<double, double>> boundary;
                 for (const auto& point : connecting_polygon_.outer()) {
                     boundary.emplace_back(point.x(), point.y());
@@ -233,19 +233,13 @@ namespace farmtrax {
                         swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
                         swaths_.push_back(swath);
 
-                        //if Swath points are not in polygon, then add to polygon
-                        if (!intersects_field(segment, outer_field_)) {
-                            connecting_polygon_.outer().push_back(segment.front());
-                            connecting_polygon_.outer().push_back(segment.back());
-                        }
-
                         // Insert the swath into the R-tree
                         Box swath_box;
                         boost::geometry::envelope(segment, swath_box);
                         swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                     }
                 } 
-                connecting_polygon_ = fieldPolygon;      
+                connecting_polygon_ = fieldPolygon;  
             }
 
             // Function to generate a line at a certain offset from the center, adjusted for the angle

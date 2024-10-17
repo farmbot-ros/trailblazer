@@ -37,6 +37,51 @@ namespace farmtrax {
     typedef std::pair<Box, std::size_t> RtreeValue;
     typedef bgi::rtree<RtreeValue, bgi::quadratic<16>> Rtree;
 
+    // Function to check if three points are colinear
+    template<typename Point>
+    bool are_colinear(const Point& p1, const Point& p2, const Point& p3, double epsilon = 1e-10) {
+        // Calculate the area of the triangle formed by the three points
+        // If the area is zero (or close to zero), the points are colinear
+
+        auto area = (boost::geometry::get<0>(p1) * (boost::geometry::get<1>(p2) - boost::geometry::get<1>(p3)) +
+                    boost::geometry::get<0>(p2) * (boost::geometry::get<1>(p3) - boost::geometry::get<1>(p1)) +
+                    boost::geometry::get<0>(p3) * (boost::geometry::get<1>(p1) - boost::geometry::get<1>(p2))) / 2.0;
+
+        return std::abs(area) < epsilon;
+    }
+
+    // Function to remove colinear points from a polygon
+    template<typename Polygon>
+    void remove_colinear_points(Polygon& polygon, double epsilon = 1e-10) {
+        using point_type = typename boost::geometry::point_type<Polygon>::type;
+        std::vector<point_type> new_points;
+        auto const& points = polygon.outer();
+
+        if (points.size() < 4) return; // Need at least 3 distinct points (excluding duplicate endpoint)
+
+        // Since the polygon is closed, the first and last points are the same.
+        // We iterate excluding the duplicate last point.
+        size_t n = points.size() - 1;
+        for (size_t i = 0; i < n; ++i) {
+            const point_type& prev = points[(i + n - 1) % n];
+            const point_type& curr = points[i];
+            const point_type& next = points[(i + 1) % n];
+
+            if (!are_colinear(prev, curr, next, epsilon)) {
+                new_points.push_back(curr);
+            }
+            // If colinear, skip the current point
+        }
+
+        // Close the polygon by adding the first point at the end
+        if (!new_points.empty()) {
+            new_points.push_back(new_points.front());
+        }
+
+        polygon.outer().assign(new_points.begin(), new_points.end());
+    }
+
+
     class Field {
         private:
             Polygon polygon_;
@@ -44,6 +89,8 @@ namespace farmtrax {
             std::vector<LineString> edges_; // Store the edges for precise intersection
             double width_;
             double height_;
+
+            double colinear_threshold_ = 0.01;
 
         public:
             // Constructors
@@ -234,10 +281,13 @@ namespace farmtrax {
                     throw std::runtime_error("Failed to determine the largest polygon after shrinking.");
                 }
 
+                Polygon simplifiedPolygon = *largest;
+                remove_colinear_points(simplifiedPolygon, colinear_threshold_);
+
                 // Convert the largest polygon back to a Field
                 Field shrunkField;
                 std::vector<std::pair<double, double>> shrunkBoundary;
-                for (const auto& point : largest->outer()) {
+                for (const auto& point : simplifiedPolygon.outer()) {
                     shrunkBoundary.emplace_back(point.x(), point.y());
                 }
                 shrunkField.gen_field(shrunkBoundary);
@@ -255,7 +305,7 @@ namespace farmtrax {
                 bg::strategy::buffer::side_straight side_strategy;
                 bg::strategy::buffer::join_round join_strategy;
                 bg::strategy::buffer::end_round end_strategy;
-                bg::strategy::buffer::point_circle point_strategy(8); // 8 points per circle for smoothness
+                bg::strategy::buffer::point_square point_strategy;
 
                 // Perform buffering with positive distance to enlarge the polygon
                 Multipolygon result;
@@ -286,10 +336,13 @@ namespace farmtrax {
                     throw std::runtime_error("Failed to determine the largest polygon after enlarging.");
                 }
 
+                Polygon simplifiedPolygon = *largest;
+                remove_colinear_points(simplifiedPolygon, colinear_threshold_);
+
                 // Convert the largest polygon back to a Field
                 Field enlargedField;
                 std::vector<std::pair<double, double>> enlargedBoundary;
-                for (const auto& point : largest->outer()) {
+                for (const auto& point : simplifiedPolygon.outer()) {
                     enlargedBoundary.emplace_back(point.x(), point.y());
                 }
 

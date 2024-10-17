@@ -193,6 +193,13 @@ private:
         // arrow_marker_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
+            // const std::vector<std::pair<double,double>> get_connecting_path()
+
+        for(const auto& point: swaths_.get_connecting_path()){
+            RCLCPP_INFO(this->get_logger(), "Connecting path: %f, %f", point.first, point.second);
+        }
+
+
         route_.set_swaths(swaths_);
         auto swaths_with_headlands = route_.get_swaths();
         // path_ = vector2Path(swaths_with_headlands.get_swaths());
