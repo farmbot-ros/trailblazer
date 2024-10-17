@@ -188,7 +188,7 @@ private:
 
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         inner_polygon_ = vector2Polygon(hl.get_border_points());
-        swaths_.gen_swaths(field_, hl, 6.0, 65.0, 2);
+        swaths_.gen_swaths(field_, hl, 6.0, 65.0, 1);
         path_ = vector2Path(swaths_.get_swaths());
         // arrow_marker_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());

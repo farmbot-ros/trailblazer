@@ -73,22 +73,16 @@ namespace farmtrax {
         Route() = default;
 
         // Constructor that initializes the route with swaths
-        Route(const Swaths& swaths) : swaths_(swaths), new_swaths_(swaths) {
+        Route(const Swaths& swaths) : swaths_(swaths), new_swaths_() {
             build_graph();
             compute_shortest_traversal();
         }
 
-        // Function to set the swaths
+        // Set the swaths for the route
         void set_swaths(const Swaths& swaths) {
             swaths_ = swaths;
-            new_swaths_ = swaths;
             build_graph();
             compute_shortest_traversal();
-        }
-
-        //get the new swaths
-        Swaths get_swaths() const {
-            return new_swaths_;
         }
 
         // Function to build the graph from the swaths
@@ -191,8 +185,9 @@ namespace farmtrax {
             const Swath* current_swath = &swaths[0];
             visited_swaths.insert(current_swath->uuid);
 
-            // Add the first swath to traversal
+            // Add the first swath to traversal and new_swaths_
             traversal_.push_back({ current_swath->swath, current_swath->type, current_swath->uuid });
+            new_swaths_.add_swath(*current_swath); // Add to new_swaths_
 
             while (visited_swaths.size() < swaths.size()) {
                 Point current_point;
@@ -251,14 +246,14 @@ namespace farmtrax {
                     transition_swath.length = bg::length(transition_path);
                     transition_swath.direction = Direction::FORWARD; // Direction may not be critical here
 
-                    // Add the transition swath to traversal
+                    // Add the transition swath to traversal and new_swaths_
                     traversal_.push_back({ transition_swath.swath, transition_swath.type, transition_swath.uuid });
+                    new_swaths_.add_swath(transition_swath); // Add to new_swaths_
 
-                    // **Add the transition swath to new_swaths_**
-                    new_swaths_.add_swath(transition_swath);
-
-                    // Add the next swath to traversal
+                    // Add the next swath to traversal and new_swaths_
                     traversal_.push_back({ next_swath->swath, next_swath->type, next_swath->uuid });
+                    new_swaths_.add_swath(*next_swath); // Add to new_swaths_
+
                     visited_swaths.insert(next_swath->uuid);
                     current_swath = next_swath;
                 } else {
@@ -290,6 +285,12 @@ namespace farmtrax {
                 // std::cout << "Path coordinates: " << bg::wkt(step.path) << std::endl;
             }
         }
+
+        //get the new swaths
+        Swaths get_swaths() const {
+            return new_swaths_;
+        }
+
     };
 
 } // namespace farmtrax
