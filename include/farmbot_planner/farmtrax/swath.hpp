@@ -88,8 +88,13 @@ namespace farmtrax {
             }
 
             // Get the swaths as a vector of Swath structs
-            std::vector<Swath> get_swaths() const {
+            const std::vector<Swath>& get_swaths() const {
                 return swaths_;
+            }
+
+            // Add a swath to the list of swaths
+            void add_swath(const Swath& swath) {
+                swaths_.push_back(swath);
             }
 
             // Query swaths intersecting a given bounding box

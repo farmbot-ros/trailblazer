@@ -7,6 +7,7 @@
 #include "farmbot_planner/utils/geojson.hpp"
 #include "farmbot_planner/farmtrax/field.hpp"
 #include "farmbot_planner/farmtrax/swath.hpp"
+#include "farmbot_planner/farmtrax/route.hpp"
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -43,6 +44,7 @@ private:
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
+    farmtrax::Route route_;
 
     farmbot_interfaces::msg::Segments segments_;
     nav_msgs::msg::Path path_;
@@ -186,10 +188,17 @@ private:
 
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         inner_polygon_ = vector2Polygon(hl.get_border_points());
-        swaths_.gen_swaths(field_, hl, 6.0, 65.0, 1);
+        swaths_.gen_swaths(field_, hl, 6.0, 65.0, 2);
         path_ = vector2Path(swaths_.get_swaths());
-        arrow_marker_ = vector2Arrows(swaths_.get_swaths());
+        // arrow_marker_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
+
+        route_.set_swaths(swaths_);
+        auto swaths_with_headlands = route_.get_swaths();
+        // path_ = vector2Path(swaths_with_headlands.get_swaths());
+        arrow_marker_ = vector2ArrowsColor(swaths_with_headlands.get_swaths());
+
+        // RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands.get_swaths().size());
 
     }
 
@@ -304,6 +313,56 @@ private:
         }
         return markers;
     }
+
+    visualization_msgs::msg::MarkerArray vector2ArrowsColor(const std::vector<farmtrax::Swath>& swaths) {
+        visualization_msgs::msg::MarkerArray markers;
+        int id = 0;
+        int num_swaths = swaths.size();  // Total number of swaths
+        for (const auto& swath : swaths) {
+            visualization_msgs::msg::Marker arrow;
+            arrow.header.frame_id = "map";
+            arrow.header.stamp = rclcpp::Clock().now();
+            arrow.ns = "swath_arrows";
+            arrow.id = id++;
+            arrow.type = visualization_msgs::msg::Marker::ARROW;
+            arrow.action = visualization_msgs::msg::Marker::ADD;
+            arrow.scale.x = 0.2;  // Shaft diameter
+            arrow.scale.y = 1;    // Head diameter
+            arrow.scale.z = 2.0;  // Head length
+
+            // Calculate color based on the current id and total number of swaths
+            float ratio = static_cast<float>(id) / num_swaths;  // Normalize id to [0, 1]
+            if (ratio < 0.5) {
+                // Green to Blue transition
+                arrow.color.r = 0.0f;
+                arrow.color.g = 1.0f - 2.0f * ratio;
+                arrow.color.b = 2.0f * ratio;
+            } else {
+                // Blue to Red transition
+                arrow.color.r = 2.0f * (ratio - 0.5f);
+                arrow.color.g = 0.0f;
+                arrow.color.b = 1.0f - 2.0f * (ratio - 0.5f);
+            }
+            arrow.color.a = 1.0f;  // Fully opaque
+
+            arrow.lifetime = rclcpp::Duration::from_seconds(0);
+
+            geometry_msgs::msg::Point p1;
+            p1.x = swath.swath[0].x();
+            p1.y = swath.swath[0].y();
+            geometry_msgs::msg::Point p2;
+            p2.x = swath.swath[1].x();
+            p2.y = swath.swath[1].y();
+            if (swath.direction == farmtrax::Direction::REVERSE) {
+                std::swap(p1, p2);
+            }
+            arrow.points.push_back(p1);
+            arrow.points.push_back(p2);
+            markers.markers.push_back(arrow);
+        }
+        return markers;
+    }
+
 
 
 };
