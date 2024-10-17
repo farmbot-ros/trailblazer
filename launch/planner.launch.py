@@ -18,7 +18,7 @@ def launch_setup(context, *args, **kwargs):
 
     ab_planner = Node(
         package='farmbot_planner',
-        executable="ab_planner",
+        executable="ab_planner2",
         name='ab_planner',
         namespace=namespace,
         parameters=[

@@ -78,14 +78,14 @@ namespace farmtrax {
             Swaths() = default;
 
             // Constructor to initialize with a field and swath width
-            Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1) {
-                gen_swaths(outer_field, inner_field, swath_width, angle_degrees, alternate_freq);
+            Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
+                gen_swaths(outer_field, inner_field, swath_width, angle_degrees, alternate_freq, inner_offset);
             }
 
-            void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1) {
+            void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
                 swath_width_ = swath_width;
                 angle_degrees_ = angle_degrees;
-                generate_swaths(outer_field, inner_field, alternate_freq);
+                generate_swaths(outer_field, inner_field, alternate_freq, inner_offset);
             }
 
             // Get the swaths as a vector of Swath structs
@@ -185,12 +185,12 @@ namespace farmtrax {
 
         private:
             // Helper function to generate swaths with a specified angle
-            void generate_swaths(const Field& outer_field_, const Field& inner_field_, int alternate_freq = 1) {
+            void generate_swaths(const Field& outer_field_, const Field& inner_field_, int alternate_freq = 1, double inner_offset = 1.0) {
                 swaths_.clear();
                 swath_rtree_.clear(); // Clear existing entries
 
 
-                Field new_field = inner_field_.get_buffered(1, farmtrax::BufferType::ENLARGE);
+                Field new_field = inner_field_.get_buffered(inner_offset, farmtrax::BufferType::ENLARGE);
                 Polygon fieldPolygon = new_field.get_polygon();
 
                 // Get the bounding box of the field

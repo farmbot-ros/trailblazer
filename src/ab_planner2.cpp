@@ -39,7 +39,7 @@ private:
     std::string geojson_file_;
     double vehicle_width_;
     double vehicle_coverage_;
-    double path_spacing_;
+    int alternate_freq_;
     double path_angle_;
 
     farmtrax::Field field_;
@@ -84,7 +84,7 @@ public:
         RCLCPP_INFO(this->get_logger(), "GeoJSON file: %s", geojson_file_.c_str());
         vehicle_width_ = this->get_parameter_or<double>("vehicle_width", 0.5);
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
-        path_spacing_ = this->get_parameter_or<double>("path_spacing", 0.1);
+        alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
 
         // Create the service client
@@ -183,12 +183,12 @@ private:
         }
 
         field_.gen_field(points);
-        farmtrax::Field hl = field_.get_buffered(vehicle_width_*6.0, farmtrax::BufferType::SHRINK);
+        farmtrax::Field hl = field_.get_buffered(vehicle_width_* 2.0, farmtrax::BufferType::SHRINK);
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         inner_polygon_ = vector2Polygon(hl.get_border_points());
-        swaths_.gen_swaths(field_, hl, 8.0, 45.0, 1);
+        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
         path_ = vector2Path(swaths_.get_swaths());
         // arrow_marker_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
