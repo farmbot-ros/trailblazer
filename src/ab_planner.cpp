@@ -134,12 +134,12 @@ private:
             return;
         }
         RCLCPP_INFO(this->get_logger(), "Perimeter of the field is %lu points", getfield.size());
-        auto enu_points = nav_to_pose(getfield);
+        auto enu_points = nav_to_double(getfield);
         if (enu_points.empty()) {
             RCLCPP_ERROR(this->get_logger(), "No ENU points received.");
             return;
         }
-        process_enu_points(enu_points);
+        process_points(enu_points);
         planner_initialized_ = true;
 
         if (goto_field_) {
@@ -158,6 +158,27 @@ private:
             }
             RCLCPP_INFO(this->get_logger(), "Going to the field are %lu waypoints", waypoints.size());
         }
+    }
+
+    void process_points(std::vector<std::pair<double, double>> points) {
+        field_.gen_field(points);
+        farmtrax::Field hl = field_.get_buffered(vehicle_width_* 2.0, farmtrax::BufferType::SHRINK);
+        RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
+
+        outer_polygon_ = vector2Polygon(field_.get_border_points());
+        inner_polygon_ = vector2Polygon(hl.get_border_points());
+        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
+        path_ = vector2Path(swaths_.get_swaths());
+        // arrow_marker_ = vector2Arrows(swaths_.get_swaths());
+        RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
+
+
+        route_.gen_route(swaths_);
+        auto swaths_with_headlands = route_.get_swaths();
+        // outer_polygon_ = vector2Polygon(route_.get_headland_points());
+        // path_ = vector2Path(swaths_with_headlands.get_swaths());
+        arrow_marker_ = vector2ArrowsColor(swaths_with_headlands.get_swaths());
+        RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands.get_swaths().size());
     }
 
     std::vector<std::vector<double>> get_the_field(std::string geojson_file_path = "") {
@@ -282,7 +303,6 @@ private:
         // path_ = vector2Path(swaths_with_headlands.get_swaths());
         arrow_marker_ = vector2ArrowsColor(swaths_with_headlands.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands.get_swaths().size());
-
     }
     
 
