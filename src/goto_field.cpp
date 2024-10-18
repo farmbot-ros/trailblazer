@@ -58,7 +58,7 @@ class OsrmRouteServiceNode : public rclcpp::Node{
 
             // Construct the OSRM API URL using the public server
             std::ostringstream url_stream;
-            url_stream << osrm_server_url_ << "/route/v1/driving/"
+            url_stream << osrm_server_url_ << "/route/v1/foot/"
                     << start_lon << "," << start_lat << ";"
                     << end_lon << "," << end_lat
                     << "?geometries=geojson&overview=full";
@@ -70,7 +70,6 @@ class OsrmRouteServiceNode : public rclcpp::Node{
             CURL* curl = curl_easy_init();
             if (!curl) {
                 RCLCPP_ERROR(this->get_logger(), "Failed to initialize libcurl.");
-                return;
             }
 
             std::string response_string;
