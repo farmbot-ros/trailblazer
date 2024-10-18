@@ -37,7 +37,7 @@ class OsrmRouteServiceNode : public rclcpp::Node{
 
             // Create the service
             service_ = this->create_service<GetRoute>(
-                topic_prefix_param + "/pla/get_route",
+                topic_prefix_param + "/pln/get_route",
                 std::bind(&OsrmRouteServiceNode::handle_get_route, this, std::placeholders::_1, std::placeholders::_2)
             );
 

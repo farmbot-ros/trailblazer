@@ -32,7 +32,7 @@ class GetTheFieldService : public rclcpp::Node{
 
             // Create the service
             service_ = this->create_service<GetTheField>(
-                topic_prefix_param + "/pla/get_field",
+                topic_prefix_param + "/pln/get_field",
                 std::bind(&GetTheFieldService::handle_get_the_field, this, std::placeholders::_1, std::placeholders::_2)
             );
 

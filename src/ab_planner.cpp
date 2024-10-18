@@ -96,15 +96,15 @@ public:
         // Create the service client
         gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>(topic_prefix_param + "/loc/gps2enu");
         enu2gps_client_ = this->create_client<farmbot_interfaces::srv::Enu2Gps>(topic_prefix_param + "/loc/enu2gps");
-        goto_field_client_ = this->create_client<farmbot_interfaces::srv::GoToField>(topic_prefix_param + "/pla/get_route");
-        get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>(topic_prefix_param + "/pla/get_field" );
+        goto_field_client_ = this->create_client<farmbot_interfaces::srv::GoToField>(topic_prefix_param + "/pln/get_route");
+        get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>(topic_prefix_param + "/pln/get_field" );
 
         // Create the path publisher
-        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>(topic_prefix_param + "/pla/path", 10);
-        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/inner_field", 10);
-        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/outer_field", 10);
-        field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pla/arrow_swath", 10);
-        path_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pla/arrow_path", 10);
+        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>(topic_prefix_param + "/pln/path", 10);
+        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pln/inner_field", 10);
+        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pln/outer_field", 10);
+        field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pln/arrow_swath", 10);
+        path_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pln/arrow_path", 10);
 
         // Create the location subscriber
         loc_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>(topic_prefix_param + "/loc/fix", 10, [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
@@ -179,7 +179,7 @@ private:
         // field_arrows_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
-        route_.gen_route(swaths_);
+        route_.gen_route(swaths_, vehicle_coverage_);
         swaths_with_headlands_ = route_.get_swaths();
         // path_ = vector2Path(swaths_with_headlands.get_swaths());
         field_arrows_ = vector2ArrowsColor(swaths_with_headlands_.get_swaths());
@@ -415,6 +415,7 @@ private:
     }
 
     visualization_msgs::msg::MarkerArray vector2ArrowsColor(const std::vector<std::pair<double, double>> pairs) {
+        std::cout << "first: " << pairs[0].first << " second: " << pairs[0].second << std::endl;
         visualization_msgs::msg::MarkerArray markers;
         int num_swaths = pairs.size()-1;  // Total number of swaths
         for (int id; id < num_swaths; id++) {
@@ -430,7 +431,7 @@ private:
             arrow.scale.z = 2.0;  // Head length
             // Calculate color based on the current id and total number of swaths
             float ratio = static_cast<float>(id) / num_swaths;  // Normalize id to [0, 1]
-            if (ratio < 0.5) {
+            if (ratio > 0.5) {
                 // Orange (1.0, 0.5, 0.0) to Cyan (0.0, 1.0, 1.0) transition
                 arrow.color.r = 1.0f - 2.0f * ratio;  // Decrease red
                 arrow.color.g = 0.5f + 1.0f * ratio;  // Increase green
