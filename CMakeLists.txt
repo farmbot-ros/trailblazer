@@ -24,8 +24,7 @@ install(
 cmake_policy(SET CMP0074 NEW)
 
 set(executables
-    # ab_planner
-    ab_planner2
+    ab_planner
     goto_field
 )
 
@@ -74,7 +73,6 @@ link_directories(${Eigen_LIBRARY_DIRS})
 add_definitions(${Eigen_DEFINITIONS})
 find_package(fmt REQUIRED)
 find_package(PCL REQUIRED)
-find_package(GDAL 3.0 REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
@@ -91,7 +89,6 @@ set(dependencies_sys
     ${Boost_LIBRARIES}
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}
-    ${GDAL_LIBRARIES}
     nlohmann_json::nlohmann_json
     ${GeographicLib_LIBRARIES}
     ${CURL_LIBRARIES}

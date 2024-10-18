@@ -6,7 +6,7 @@ ab_planner:
   ros__parameters:
     name: 'ab_planner'
     topic_prefix: '/fb'
-    geojson_file: '/home/bresilla/FARMBOT/src/farmbot_planner/config/field.geojson'
+    geojson_file: '/home/bresilla/farmbot/src/farmbot_planner/config/field.geojson'
     vehicle_width: 2.0
     vehicle_coverage: 4.0
     alternate_freq: 1  # every 1 row
