@@ -15,6 +15,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/polygon_stamped.hpp"
 #include "geometry_msgs/msg/point32.hpp"
+#include "geometry_msgs/msg/pose.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_interfaces/srv/enu2_gps.hpp"
@@ -50,12 +51,15 @@ private:
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
     farmtrax::Route route_;
+    farmtrax::Swaths swaths_with_headlands_;
 
-    sensor_msgs::msg::NavSatFix loc_;
+    sensor_msgs::msg::NavSatFix robot_loc_;
+    sensor_msgs::msg::NavSatFix field_loc_;
     nav_msgs::msg::Path path_;
+
     farmbot_interfaces::msg::Segments segments_;
-    visualization_msgs::msg::Marker line_marker_;
-    visualization_msgs::msg::MarkerArray arrow_marker_;
+    visualization_msgs::msg::MarkerArray field_arrows_;
+    visualization_msgs::msg::MarkerArray path_arrows_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
 
@@ -67,8 +71,8 @@ private:
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr line_publisher_;
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr arrow_publisher_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr path_arrows_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
 
@@ -99,12 +103,12 @@ public:
         path_publisher_ = this->create_publisher<nav_msgs::msg::Path>(topic_prefix_param + "/pla/path", 10);
         inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/inner_field", 10);
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pla/outer_field", 10);
-        arrow_publisher_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pla/swath_arrows", 10);
-        line_publisher_ = this->create_publisher<visualization_msgs::msg::Marker>(topic_prefix_param + "/pla/swath_lines", 10);
+        field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pla/arrow_swath", 10);
+        path_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pla/arrow_path", 10);
 
         // Create the location subscriber
         loc_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>(topic_prefix_param + "/loc/fix", 10, [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
-            loc_ = *msg;
+            robot_loc_ = *msg;
             gps_locked_ = true;
         });
 
@@ -123,8 +127,10 @@ private:
         path_publisher_->publish(path_);
         outer_polygon_publisher_->publish(outer_polygon_);
         inner_polygon_publisher_->publish(inner_polygon_);
-        line_publisher_->publish(line_marker_);
-        arrow_publisher_->publish(arrow_marker_);
+        field_arrows_pub_->publish(field_arrows_);
+        if (goto_field_) {
+            path_arrows_pub_->publish(path_arrows_);
+        }
     }
 
     void runner() {
@@ -133,34 +139,35 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No points found");
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "Perimeter of the field is %lu points", getfield.size());
-        auto enu_points = nav_to_double(getfield);
-        if (enu_points.empty()) {
+        auto field_in_enu = nav_to_enu(getfield);
+        if (field_in_enu.empty()) {
             RCLCPP_ERROR(this->get_logger(), "No ENU points received.");
             return;
         }
-        process_points(enu_points);
-        planner_initialized_ = true;
+        process_field(field_in_enu);
 
         if (goto_field_) {
+            set_initial_point();
             while (!gps_locked_) {
                 RCLCPP_INFO(this->get_logger(), "Waiting for GPS lock...");
                 std::this_thread::sleep_for(1s);
             }
-            auto start = loc_;
-            auto end = sensor_msgs::msg::NavSatFix();
-            end.latitude = getfield[0][0];
-            end.longitude = getfield[0][1];
-            auto waypoints = go_to_field(start, end);
+            auto waypoints = go_to_field(robot_loc_, field_loc_);
             if (waypoints.empty()) {
                 RCLCPP_ERROR(this->get_logger(), "No waypoints generated.");
                 return;
             }
-            RCLCPP_INFO(this->get_logger(), "Going to the field are %lu waypoints", waypoints.size());
+            auto waypoints_in_enu = nav_to_enu(waypoints);
+            if (waypoints_in_enu.empty()) {
+                RCLCPP_ERROR(this->get_logger(), "No ENU waypoints received.");
+                return;
+            }
+            process_path(waypoints_in_enu);
         }
+        planner_initialized_ = true;
     }
 
-    void process_points(std::vector<std::pair<double, double>> points) {
+    void process_field(std::vector<std::pair<double, double>> points) {
         field_.gen_field(points);
         farmtrax::Field hl = field_.get_buffered(vehicle_width_* 2.0, farmtrax::BufferType::SHRINK);
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
@@ -169,16 +176,34 @@ private:
         inner_polygon_ = vector2Polygon(hl.get_border_points());
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
         path_ = vector2Path(swaths_.get_swaths());
-        // arrow_marker_ = vector2Arrows(swaths_.get_swaths());
+        // field_arrows_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
-
         route_.gen_route(swaths_);
-        auto swaths_with_headlands = route_.get_swaths();
-        // outer_polygon_ = vector2Polygon(route_.get_headland_points());
+        swaths_with_headlands_ = route_.get_swaths();
         // path_ = vector2Path(swaths_with_headlands.get_swaths());
-        arrow_marker_ = vector2ArrowsColor(swaths_with_headlands.get_swaths());
-        RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands.get_swaths().size());
+        field_arrows_ = vector2ArrowsColor(swaths_with_headlands_.get_swaths());
+        RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands_.get_swaths().size());
+    }
+
+    void process_path(std::vector<std::pair<double, double>> points){
+        RCLCPP_INFO(this->get_logger(), "Path generated: %lu", points.size());
+        path_arrows_ = vector2ArrowsColor(points);
+    }
+    
+    void set_initial_point() {
+        auto initial_points = swaths_with_headlands_.get_swaths()[0].swath.front();
+        std::vector<std::pair<double, double>> path_points;
+        std::pair<double, double> point = std::make_pair(initial_points.x(), initial_points.y());
+        path_points.push_back(point);
+        auto gps_points = enu_to_nav(path_points);
+        if (gps_points.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "No GPS points received.");
+            return;
+        }
+        RCLCPP_INFO(this->get_logger(), "Initial point: %f, %f", gps_points[0][0], gps_points[0][1]);
+        field_loc_.latitude = gps_points[0][0];
+        field_loc_.longitude = gps_points[0][1];
     }
 
     std::vector<std::vector<double>> get_the_field(std::string geojson_file_path = "") {
@@ -220,35 +245,7 @@ private:
         return points;
     }
 
-    std::vector<geometry_msgs::msg::Pose> nav_to_pose(std::vector<std::vector<double>> navpts) {
-        std::vector<geometry_msgs::msg::Pose> poses;
-        auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
-        for (const auto& point : navpts) {
-            sensor_msgs::msg::NavSatFix gps_point;
-            gps_point.latitude = point[0];
-            gps_point.longitude = point[1];
-            gps_point.altitude = 0.0;  // Adjust if altitude data is available
-            request->gps.push_back(gps_point);
-        }
-        while (!gps2enu_client_->wait_for_service(1s)) {
-            if (!rclcpp::ok()) {
-                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                return std::vector<geometry_msgs::msg::Pose>();
-            }
-            RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
-        }
-        auto result = gps2enu_client_->async_send_request(request);
-        auto enupts =  result.get()->enu;
-        for (const auto& point : enupts) {
-            geometry_msgs::msg::Pose pose;
-            pose.position.x = point.position.x;
-            pose.position.y = point.position.y;
-            poses.push_back(pose);
-        }
-        return poses;
-    }
-
-    std::vector<std::pair<double, double>> nav_to_double(std::vector<std::vector<double>> navpts){
+    std::vector<std::pair<double, double>> nav_to_enu(std::vector<std::vector<double>> navpts){
         std::vector<std::pair<double, double>> points;
         auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
         for (const auto& point : navpts) {
@@ -266,45 +263,37 @@ private:
             RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
         }
         auto result = gps2enu_client_->async_send_request(request);
-        auto enupts =  result.get()->enu;
-        for (const auto& point : enupts) {
+        auto getres =  result.get()->enu;
+        for (const auto& point : getres) {
             points.emplace_back(std::pair<double, double>{point.position.x, point.position.y});
         }
         return points;
     }
-       
 
-    void process_enu_points(const std::vector<geometry_msgs::msg::Pose>& enu_points) {
-        if (enu_points.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "No ENU points received.");
-            return;
+    std::vector<std::vector<double>> enu_to_nav(std::vector<std::pair<double, double>> navpts){
+        std::vector<std::vector<double>> points;
+        auto request = std::make_shared<farmbot_interfaces::srv::Enu2Gps::Request>();
+        for (const auto& point : navpts) {
+            geometry_msgs::msg::Pose pose;
+            pose.position.x = point.first;
+            pose.position.y = point.second;
+            pose.position.z = 0.0;  // Adjust if altitude data is available
+            request->enu.push_back(pose);
         }
-
-        std::vector<std::pair<double, double>> points;
-        for (const auto& point : enu_points) {
-            points.emplace_back(point.position.x, point.position.y);
+        while (!enu2gps_client_->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+                return std::vector<std::vector<double>>();
+            }
+            RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
         }
-
-        field_.gen_field(points);
-        farmtrax::Field hl = field_.get_buffered(vehicle_width_* 2.0, farmtrax::BufferType::SHRINK);
-        RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
-
-        outer_polygon_ = vector2Polygon(field_.get_border_points());
-        inner_polygon_ = vector2Polygon(hl.get_border_points());
-        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
-        path_ = vector2Path(swaths_.get_swaths());
-        // arrow_marker_ = vector2Arrows(swaths_.get_swaths());
-        RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
-
-
-        route_.gen_route(swaths_);
-        auto swaths_with_headlands = route_.get_swaths();
-        // outer_polygon_ = vector2Polygon(route_.get_headland_points());
-        // path_ = vector2Path(swaths_with_headlands.get_swaths());
-        arrow_marker_ = vector2ArrowsColor(swaths_with_headlands.get_swaths());
-        RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands.get_swaths().size());
+        auto result = enu2gps_client_->async_send_request(request);
+        auto getres =  result.get()->gps;
+        for (const auto& point : getres) {
+            points.emplace_back(std::vector<double>{point.latitude, point.longitude});
+        }
+        return points;
     }
-    
 
     // vector of vector of double to ros polygon
     geometry_msgs::msg::PolygonStamped vector2Polygon(const std::vector<std::pair<double, double>>& points) {
@@ -334,45 +323,6 @@ private:
             }
         }
         return path;
-    }
-
-    visualization_msgs::msg::Marker vector2Lines(const std::vector<farmtrax::Swath>& swaths) {
-        visualization_msgs::msg::Marker line_marker;
-        // Set the frame and timestamp
-        line_marker.header.frame_id = "map";
-        line_marker.header.stamp = rclcpp::Clock().now();
-        // Set the namespace and id for this marker
-        line_marker.ns = "swath_lines";
-        line_marker.id = 0;
-        // Define the type of marker (LINE_STRIP)
-        line_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
-        // Set the scale of the lines (width of the lines)
-        line_marker.scale.x = 0.1;  // Adjust the width of the line here
-        // Set the lifetime of the marker (0 means forever)
-        line_marker.lifetime = rclcpp::Duration::from_seconds(0);
-        // Iterate through the swaths and add points to the marker
-        for (const auto& swath : swaths) {
-            geometry_msgs::msg::Point p1;
-            p1.x = swath.swath[0].x();
-            p1.y = swath.swath[0].y();
-            geometry_msgs::msg::Point p2;
-            p2.x = swath.swath[1].x();
-            p2.y = swath.swath[1].y();
-            if (swath.type == farmtrax::SwathType::LINE) {
-                line_marker.color.r = 0.0f;  // Green
-                line_marker.color.g = 1.0f;
-                line_marker.color.b = 1.0f;
-                line_marker.color.a = 1.0f;  // Fully opaque
-            } else {
-                line_marker.color.r = 1.0f;  // Red
-                line_marker.color.g = 0.0f;
-                line_marker.color.b = 0.0f;
-                line_marker.color.a = 1.0f;  // Fully opaque
-            }
-            line_marker.points.push_back(p1);
-            line_marker.points.push_back(p2);
-        }
-        return line_marker;
     }
 
     visualization_msgs::msg::MarkerArray vector2Arrows(const std::vector<farmtrax::Swath>& swaths) {
@@ -457,6 +407,48 @@ private:
             if (swath.direction == farmtrax::Direction::REVERSE) {
                 std::swap(p1, p2);
             }
+            arrow.points.push_back(p1);
+            arrow.points.push_back(p2);
+            markers.markers.push_back(arrow);
+        }
+        return markers;
+    }
+
+    visualization_msgs::msg::MarkerArray vector2ArrowsColor(const std::vector<std::pair<double, double>> pairs) {
+        visualization_msgs::msg::MarkerArray markers;
+        int num_swaths = pairs.size()-1;  // Total number of swaths
+        for (int id; id < num_swaths; id++) {
+            visualization_msgs::msg::Marker arrow;
+            arrow.header.frame_id = "map";
+            arrow.header.stamp = rclcpp::Clock().now();
+            arrow.ns = "path_arrows";
+            arrow.id = id;
+            arrow.type = visualization_msgs::msg::Marker::ARROW;
+            arrow.action = visualization_msgs::msg::Marker::ADD;
+            arrow.scale.x = 0.2;  // Shaft diameter
+            arrow.scale.y = 1;    // Head diameter
+            arrow.scale.z = 2.0;  // Head length
+            // Calculate color based on the current id and total number of swaths
+            float ratio = static_cast<float>(id) / num_swaths;  // Normalize id to [0, 1]
+            if (ratio < 0.5) {
+                // Orange (1.0, 0.5, 0.0) to Cyan (0.0, 1.0, 1.0) transition
+                arrow.color.r = 1.0f - 2.0f * ratio;  // Decrease red
+                arrow.color.g = 0.5f + 1.0f * ratio;  // Increase green
+                arrow.color.b = 2.0f * ratio;         // Increase blue
+            } else {
+                // Cyan (0.0, 1.0, 1.0) to Magenta (1.0, 0.0, 1.0) transition
+                arrow.color.r = 2.0f * (ratio - 0.5f);  // Increase red
+                arrow.color.g = 1.0f - 2.0f * (ratio - 0.5f);  // Decrease green
+                arrow.color.b = 1.0f;  // Blue stays at max
+            }
+            arrow.color.a = 1.0f;  // Fully opaque
+            arrow.lifetime = rclcpp::Duration::from_seconds(0);
+            geometry_msgs::msg::Point p1;
+            p1.x = pairs[id].first;
+            p1.y = pairs[id].second;
+            geometry_msgs::msg::Point p2;
+            p2.x = pairs[id+1].first;
+            p2.y = pairs[id+1].second;
             arrow.points.push_back(p1);
             arrow.points.push_back(p2);
             markers.markers.push_back(arrow);
