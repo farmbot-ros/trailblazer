@@ -123,8 +123,8 @@ class OsrmRouteServiceNode : public rclcpp::Node{
                     RCLCPP_WARN(this->get_logger(), "Invalid coordinate format.");
                     continue;
                 }
-                double lat = coord[0].asDouble();
-                double lon = coord[1].asDouble();
+                double lat = coord[1].asDouble();
+                double lon = coord[0].asDouble();
                 sensor_msgs::msg::NavSatFix waypoint;
                 waypoint.latitude = lat;
                 waypoint.longitude = lon;
