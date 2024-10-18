@@ -3,16 +3,14 @@
 #include <vector>
 #include <sstream>
 
-// ROS 2 Headers
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
-#include "farmbot_interfaces/srv/go_to_map.hpp"
+#include "farmbot_interfaces/srv/go_to_field.hpp"
 
-// External Libraries
 #include <curl/curl.h>
 #include <json/json.h> // Install jsoncpp or use another JSON library
 
-using GetRoute = farmbot_interfaces::srv::GoToMap;
+using GetRoute = farmbot_interfaces::srv::GoToField;
 
 // Callback function to handle data received by libcurl
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -31,7 +29,7 @@ class OsrmRouteServiceNode : public rclcpp::Node{
 
     public:
         OsrmRouteServiceNode(): Node("goto_field"){
-            name = this->get_parameter_or<std::string>("name", "ab_planner");
+            name = this->get_parameter_or<std::string>("name", "goto_field");
             topic_prefix_param = this->get_parameter_or<std::string>("topic_prefix", "/fb");
             // Set the public OSRM server URL
             osrm_server_url_ = this->get_parameter_or<std::string>("osrm_server_url", "http://router.project-osrm.org");
@@ -125,8 +123,8 @@ class OsrmRouteServiceNode : public rclcpp::Node{
                     RCLCPP_WARN(this->get_logger(), "Invalid coordinate format.");
                     continue;
                 }
-                double lon = coord[0].asDouble();
-                double lat = coord[1].asDouble();
+                double lat = coord[0].asDouble();
+                double lon = coord[1].asDouble();
                 sensor_msgs::msg::NavSatFix waypoint;
                 waypoint.latitude = lat;
                 waypoint.longitude = lon;

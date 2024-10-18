@@ -43,6 +43,20 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
     nodes_array.append(goto_field)
+
+    getthe_field = Node(
+        package='farmbot_planner',
+        executable="getthe_field",
+        name='getthe_field',
+        namespace=namespace,
+        parameters=[
+            {"frame_prefix": namespace+"/"},
+            {"namespace": namespace},
+            yaml.safe_load(open(param_file))['getthe_field']['ros__parameters'],
+            yaml.safe_load(open(param_file))['global']['ros__parameters']
+        ]
+    )
+    nodes_array.append(getthe_field)
     
     return nodes_array
 

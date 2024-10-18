@@ -26,6 +26,7 @@ cmake_policy(SET CMP0074 NEW)
 set(executables
     ab_planner
     goto_field
+    getthe_field
 )
 
 set (utils

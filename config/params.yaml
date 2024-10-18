@@ -6,14 +6,20 @@ ab_planner:
   ros__parameters:
     name: 'ab_planner'
     topic_prefix: '/fb'
-    geojson_file: '/home/bresilla/farmbot/src/farmbot_planner/config/field.geojson'
     vehicle_width: 2.0
     vehicle_coverage: 4.0
     alternate_freq: 1  # every 1 row
     path_angle: 80.0 # degrees
+    goto_field: true
 
 goto_field:
   ros__parameters:
     name: 'goto_field'
     topic_prefix: '/fb'
     osrm_server_url: 'http://router.project-osrm.org'
+
+getthe_field:
+  ros__parameters:
+    name: 'getthe_field'
+    topic_prefix: '/fb'
+    geojson_file: '/home/bresilla/farmbot/src/farmbot_planner/config/field.geojson'
