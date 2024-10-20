@@ -8,6 +8,8 @@
 #include "farmbot_planner/farmtrax/field.hpp"
 #include "farmbot_planner/farmtrax/swath.hpp"
 #include "farmbot_planner/farmtrax/route.hpp"
+#include "farmbot_planner/farmtrax/mesh.hpp"
+#include "farmbot_planner/farmtrax/path.hpp"
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -51,6 +53,7 @@ private:
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
     farmtrax::Route route_;
+    farmtrax::Mesh mesh_;
     farmtrax::Swaths swaths_with_headlands_;
 
     sensor_msgs::msg::NavSatFix robot_loc_;
@@ -144,27 +147,48 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No ENU points received.");
             return;
         }
-        process_field(field_in_enu);
+        process_field2(field_in_enu);
 
-        if (goto_field_) {
-            set_initial_point();
-            while (!gps_locked_) {
-                RCLCPP_INFO(this->get_logger(), "Waiting for GPS lock...");
-                std::this_thread::sleep_for(1s);
-            }
-            auto waypoints = go_to_field(robot_loc_, field_loc_);
-            if (waypoints.empty()) {
-                RCLCPP_ERROR(this->get_logger(), "No waypoints generated.");
-                return;
-            }
-            auto waypoints_in_enu = nav_to_enu(waypoints);
-            if (waypoints_in_enu.empty()) {
-                RCLCPP_ERROR(this->get_logger(), "No ENU waypoints received.");
-                return;
-            }
-            process_path(waypoints_in_enu);
-        }
-        planner_initialized_ = true;
+        // if (goto_field_) {
+        //     set_initial_point();
+        //     while (!gps_locked_) {
+        //         RCLCPP_INFO(this->get_logger(), "Waiting for GPS lock...");
+        //         std::this_thread::sleep_for(1s);
+        //     }
+        //     auto waypoints = go_to_field(robot_loc_, field_loc_);
+        //     if (waypoints.empty()) {
+        //         RCLCPP_ERROR(this->get_logger(), "No waypoints generated.");
+        //         return;
+        //     }
+        //     auto waypoints_in_enu = nav_to_enu(waypoints);
+        //     if (waypoints_in_enu.empty()) {
+        //         RCLCPP_ERROR(this->get_logger(), "No ENU waypoints received.");
+        //         return;
+        //     }
+        //     process_path(waypoints_in_enu);
+        // }
+        // planner_initialized_ = true;
+    }
+
+    void process_field2(std::vector<std::pair<double, double>> points) {
+        field_.gen_field(points);
+        farmtrax::Field hl = field_.get_buffered(vehicle_width_* 2.0, farmtrax::BufferType::SHRINK);
+        RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
+
+        outer_polygon_ = vector2Polygon(field_.get_border_points());
+        inner_polygon_ = vector2Polygon(hl.get_border_points());
+        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
+        path_ = vector2Path(swaths_.get_swaths());
+        // field_arrows_ = vector2Arrows(swaths_.get_swaths());
+        RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
+
+        mesh_ = farmtrax::Mesh(swaths_);
+        mesh_.build_graph();
+        RCLCPP_INFO(this->get_logger(), mesh_.to_string().c_str());
+        RCLCPP_INFO(this->get_logger(), "Mesh generated");
+
+        mesh_.to_dot("/home/bresilla/mesh.dot");
+        RCLCPP_INFO(this->get_logger(), "Mesh saved to /home/bresilla/mesh.dot");
     }
 
     void process_field(std::vector<std::pair<double, double>> points) {
@@ -179,7 +203,7 @@ private:
         // field_arrows_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
-        route_.gen_route(swaths_, vehicle_coverage_);
+        route_.gen_route(swaths_, vehicle_coverage_*alternate_freq_);
         swaths_with_headlands_ = route_.get_swaths();
         // path_ = vector2Path(swaths_with_headlands.get_swaths());
         field_arrows_ = vector2ArrowsColor(swaths_with_headlands_.get_swaths());
@@ -187,7 +211,6 @@ private:
     }
 
     void process_path(std::vector<std::pair<double, double>> points){
-        RCLCPP_INFO(this->get_logger(), "Path generated: %lu", points.size());
         path_arrows_ = vector2ArrowsColor(points);
     }
     
@@ -415,7 +438,7 @@ private:
     }
 
     visualization_msgs::msg::MarkerArray vector2ArrowsColor(const std::vector<std::pair<double, double>> pairs) {
-        std::cout << "first: " << pairs[0].first << " second: " << pairs[0].second << std::endl;
+        RCLCPP_INFO(this->get_logger(), "Generating arrows for %lu pairs", pairs.size());
         visualization_msgs::msg::MarkerArray markers;
         int num_swaths = pairs.size()-1;  // Total number of swaths
         for (int id; id < num_swaths; id++) {

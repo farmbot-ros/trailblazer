@@ -28,7 +28,7 @@ def launch_setup(context, *args, **kwargs):
             yaml.safe_load(open(param_file))['global']['ros__parameters']
         ]
     )
-    nodes_array.append(ab_planner)
+    # nodes_array.append(ab_planner)
 
     goto_field = Node(
         package='farmbot_planner',

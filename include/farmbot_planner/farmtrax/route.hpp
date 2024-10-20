@@ -394,7 +394,6 @@ namespace farmtrax {
                                 perimeter_swath.swath = segment;
                                 perimeter_swath.uuid = generate_UUID();
                                 perimeter_swath.type = SwathType::TURN;
-                                perimeter_swath.transportlane = true; // Assuming transitions are transport lanes
                                 perimeter_swath.length = bg::length(segment);
                                 perimeter_swath.direction = Direction::FORWARD; // Direction may not be critical here
 
@@ -411,7 +410,6 @@ namespace farmtrax {
                             transition_swath.swath = direct_transition;
                             transition_swath.uuid = generate_UUID();
                             transition_swath.type = SwathType::TURN;
-                            transition_swath.transportlane = true; // Assuming transitions are transport lanes
                             transition_swath.length = transition_length;
                             transition_swath.direction = Direction::FORWARD; // Direction may not be critical here
 
