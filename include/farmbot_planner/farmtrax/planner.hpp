@@ -42,12 +42,12 @@ namespace farmtrax {
         }
     };
 
-    class Route {
+    class Planner {
         private:
-            Swaths swaths_;                    // Original swaths provided to the Route
+            Swaths swaths_;                    // Original swaths provided to the Planner
             Swaths new_swaths_;                // Swaths including transitions (new swaths)
             Polygon headland_path_;            // Field boundary polygon
-            double swath_width_;               // Total distance of the route
+            double swath_width_;               // Total distance of the Planner
 
             // Define the Boost Graph types
             typedef boost::adjacency_list<
@@ -74,14 +74,14 @@ namespace farmtrax {
             std::vector<TraversalStep> traversal_;
 
         public:
-            Route() = default;
+            Planner() = default;
 
-            // Constructor that initializes the route with swaths
-            Route(const Swaths& swaths){
+            // Constructor that initializes the Planner with swaths
+            Planner(const Swaths& swaths){
                 gen_route(swaths);
             }
 
-            // Set the swaths for the route
+            // Set the swaths for the Planner
             void gen_route(const Swaths& swaths, double swath_width = 1.0) {
                 swaths_ = swaths;
                 swath_width_ = swath_width;

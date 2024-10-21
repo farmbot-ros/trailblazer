@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <limits>
 #include <cmath>
-#include <iostream> // Added for debug output
+#include <iostream> // For debug output
 
 namespace farmtrax {
     namespace bg = boost::geometry; // Ensure namespace alias is defined
@@ -36,7 +36,7 @@ namespace farmtrax {
         // Default constructor
         Path() : mesh_(), start_set_(false), end_set_(false) {}
 
-        // Constructor that initializes with a Mesh reference
+        // Constructor that initializes with a Mesh instance
         Path(Mesh mesh) : mesh_(mesh), start_set_(false), end_set_(false) {}
 
         // Method to set the initial and final points
@@ -80,6 +80,27 @@ namespace farmtrax {
                 default:
                     throw std::invalid_argument("Unsupported algorithm type.");
             }
+        }
+
+        std::vector<Swath> gen_swaths(const std::vector<std::string>& path_uuids) const {
+            std::vector<Swath> swath_path;
+            for (const auto& uuid : path_uuids) {
+                auto it = mesh_.uuid_to_swath_.find(uuid);
+                if (it != mesh_.uuid_to_swath_.end()) {
+                    swath_path.push_back(it->second);
+                } else {
+                    throw std::runtime_error("Swath UUID not found in mesh: " + uuid);
+                }
+            }
+            return swath_path;
+        }
+
+        std::string print_path(const std::vector<std::string>& path_uuids) const {
+            std::string path_str;
+            for (const auto& uuid : path_uuids) {
+                path_str += uuid + " -> ";
+            }
+            return path_str;
         }
 
     private:
@@ -158,7 +179,7 @@ namespace farmtrax {
 
             auto end_vertex = end_vertex_it->first;
 
-            // **Fix**: Calculate total_swaths to include only swaths (SwathType::LINE)
+            // Calculate total_swaths to include only swaths (SwathType::LINE)
             size_t total_swaths = std::count_if(
                 mesh_.uuid_to_swath_.begin(),
                 mesh_.uuid_to_swath_.end(),
@@ -170,8 +191,9 @@ namespace farmtrax {
             std::cout << "Total swaths to visit: " << total_swaths << "\n";
 
             // Recursive backtracking to find the path
-            // Initialize previous_vertex as start_vertex to prevent immediate backtracking
-            bool found = recursive_brute_force(start_vertex, end_vertex, visited_swaths, path, total_swaths, start_vertex);
+            // Initialize previous_vertex as invalid to indicate no previous vertex
+            boost::graph_traits<Mesh::Graph>::vertex_descriptor invalid_vertex = boost::graph_traits<Mesh::Graph>::null_vertex();
+            bool found = recursive_brute_force(start_vertex, end_vertex, visited_swaths, path, total_swaths, invalid_vertex);
 
             if (found) {
                 std::cout << "Valid path found.\n";
@@ -198,7 +220,7 @@ namespace farmtrax {
             // Iterate over all outgoing edges from current_vertex
             boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
             for (boost::tie(ei, ei_end) = boost::out_edges(current_vertex, mesh_.graph_); ei != ei_end; ++ei) {
-                std::cout << "Visiting edge " << *ei << std::endl;
+                std::cout << "Visiting edge (" << boost::source(*ei, mesh_.graph_) << "," << boost::target(*ei, mesh_.graph_) << ")\n";
                 auto edge = *ei;
                 EdgeProperties props = mesh_.graph_[edge];
                 std::string swath_uuid = props.swath_uuid;
@@ -210,6 +232,7 @@ namespace farmtrax {
 
                 if (is_swath) {
                     if (visited_swaths.find(swath_uuid) != visited_swaths.end()) {
+                        std::cout << "Swath UUID " << swath_uuid << " already visited. Skipping.\n";
                         continue; // Already visited this swath
                     }
                 }

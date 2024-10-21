@@ -7,7 +7,7 @@
 #include "farmbot_planner/utils/geojson.hpp"
 #include "farmbot_planner/farmtrax/field.hpp"
 #include "farmbot_planner/farmtrax/swath.hpp"
-#include "farmbot_planner/farmtrax/route.hpp"
+#include "farmbot_planner/farmtrax/planner.hpp"
 #include "farmbot_planner/farmtrax/mesh.hpp"
 #include "farmbot_planner/farmtrax/path.hpp"
 #include <visualization_msgs/msg/marker.hpp>
@@ -52,7 +52,8 @@ private:
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
-    farmtrax::Route route_;
+    farmtrax::Planner planner_;
+
     farmtrax::Mesh mesh_;
     farmtrax::Path pathh_;
     farmtrax::Swaths swaths_with_headlands_;
@@ -168,7 +169,7 @@ private:
         //     }
         //     process_path(waypoints_in_enu);
         // }
-        // planner_initialized_ = true;
+        planner_initialized_ = true;
     }
 
     void process_field2(std::vector<std::pair<double, double>> points) {
@@ -192,6 +193,9 @@ private:
 
         pathh_ = farmtrax::Path(mesh_);
         std::vector<std::string> uuid_path = pathh_.find_optimal(farmtrax::Path::AlgorithmType::BRUTE_FORCE);
+        std::vector<farmtrax::Swath> swath_path = pathh_.gen_swaths(uuid_path);
+        field_arrows_ = vector2ArrowsColor(swath_path);
+        pathh_.print_path(uuid_path);
     }
 
     void process_field(std::vector<std::pair<double, double>> points) {
@@ -206,8 +210,8 @@ private:
         // field_arrows_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
-        route_.gen_route(swaths_, vehicle_coverage_*alternate_freq_);
-        swaths_with_headlands_ = route_.get_swaths();
+        planner_.gen_route(swaths_, vehicle_coverage_*alternate_freq_);
+        swaths_with_headlands_ = planner_.get_swaths();
         // path_ = vector2Path(swaths_with_headlands.get_swaths());
         field_arrows_ = vector2ArrowsColor(swaths_with_headlands_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands_.get_swaths().size());
