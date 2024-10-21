@@ -121,10 +121,9 @@ namespace farmtrax {
 
                     boost::graph_traits<Graph>::vertex_descriptor start_vertex = get_or_create_vertex(start_point);
                     boost::graph_traits<Graph>::vertex_descriptor end_vertex = get_or_create_vertex(end_point);
-
                     if (swath.type == SwathType::LINE) {
                         // Swaths are directed edges
-                        EdgeProperties props(false, swath.uuid, 1.0); // Initialize weight to 1.0 (modify as needed)
+                        EdgeProperties props(false, swath.uuid, weight_on_headlands ? 1 : 0);
 
                         boost::graph_traits<Graph>::edge_descriptor e;
                         bool inserted;
@@ -136,8 +135,8 @@ namespace farmtrax {
                     }
                     else {
                         // Headlands are undirected edges (add two directed edges)
-                        EdgeProperties props_forward(true, swath.uuid, 1.0); // Initialize weight to 1.0 (modify as needed)
-                        EdgeProperties props_reverse(true, swath.uuid, 1.0); // Initialize weight to 1.0 (modify as needed)
+                        EdgeProperties props_forward(true, swath.uuid, weight_on_headlands ? 0 : 1);
+                        EdgeProperties props_reverse(true, swath.uuid, weight_on_headlands ? 0 : 1);
 
                         boost::graph_traits<Graph>::edge_descriptor e1, e2;
                         bool inserted1, inserted2;
