@@ -4,7 +4,8 @@ project(farmbot_planner)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
-
+cmake_policy(SET CMP0074 NEW)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
 
 install(
@@ -21,7 +22,6 @@ install(
     DIRECTORY include/
     DESTINATION include
 )
-cmake_policy(SET CMP0074 NEW)
 
 set(executables
     ab_planner
