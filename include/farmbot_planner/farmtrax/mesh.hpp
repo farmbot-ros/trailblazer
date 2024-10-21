@@ -34,15 +34,16 @@ namespace farmtrax {
     typedef bg::model::polygon<Point> Polygon;
 
 
-    // Edge property to indicate if the edge is bidirectional (undirected) and its weight
+    // Edge property to indicate if the edge is bidirectional (undirected), its type, and its weight
     struct EdgeProperties {
         bool is_bidirectional;          // Flag to indicate if the edge is bidirectional
         std::string swath_uuid;         // UUID to identify the swath or headland
+        SwathType type;                 // Type of the edge (LINE or TURN)
         double weight;                  // Weight of the edge (for algorithms)
-        
-        // Constructor with default weight
-        EdgeProperties(bool bidirectional = false, const std::string& uuid = "", double w = 1.0)
-            : is_bidirectional(bidirectional), swath_uuid(uuid), weight(w) {}
+
+        // Constructor with default weight and type
+        EdgeProperties(bool bidirectional = false, const std::string& uuid = "", SwathType swath_type = SwathType::LINE, double w = 1.0)
+            : is_bidirectional(bidirectional), swath_uuid(uuid), type(swath_type), weight(w) {}
     };
 
     // Comparator for Point
@@ -62,7 +63,7 @@ namespace farmtrax {
     class Mesh {
         private:
             Swaths swaths_;
-        
+
         public:
             // Define the graph type with EdgeProperties
             typedef boost::adjacency_list<
@@ -121,9 +122,10 @@ namespace farmtrax {
 
                     boost::graph_traits<Graph>::vertex_descriptor start_vertex = get_or_create_vertex(start_point);
                     boost::graph_traits<Graph>::vertex_descriptor end_vertex = get_or_create_vertex(end_point);
+
                     if (swath.type == SwathType::LINE) {
                         // Swaths are directed edges
-                        EdgeProperties props(false, swath.uuid, weight_on_headlands ? 1 : 0);
+                        EdgeProperties props(false, swath.uuid, SwathType::LINE, weight_on_headlands ? 1.0 : 0.0);
 
                         boost::graph_traits<Graph>::edge_descriptor e;
                         bool inserted;
@@ -135,8 +137,8 @@ namespace farmtrax {
                     }
                     else {
                         // Headlands are undirected edges (add two directed edges)
-                        EdgeProperties props_forward(true, swath.uuid, weight_on_headlands ? 0 : 1);
-                        EdgeProperties props_reverse(true, swath.uuid, weight_on_headlands ? 0 : 1);
+                        EdgeProperties props_forward(true, swath.uuid, SwathType::TURN, weight_on_headlands ? 0.0 : 1.0);
+                        EdgeProperties props_reverse(true, swath.uuid, SwathType::TURN, weight_on_headlands ? 0.0 : 1.0);
 
                         boost::graph_traits<Graph>::edge_descriptor e1, e2;
                         bool inserted1, inserted2;
@@ -174,7 +176,7 @@ namespace farmtrax {
                     Point tp = vertex_point_map_.at(t);
                     EdgeProperties props = graph_[e];
                     oss << "Edge " << e << ": (" << sp.x() << ", " << sp.y() << ") -> (" << tp.x() << ", " << tp.y() << ")";
-                    oss << " (swath: " << props.swath_uuid << ", bidirectional: " << props.is_bidirectional << ", weight: " << props.weight << ")" << std::endl;
+                    oss << " (swath: " << props.swath_uuid << ", type: " << static_cast<int>(props.type) << ", bidirectional: " << props.is_bidirectional << ", weight: " << props.weight << ")" << std::endl;
                 }
 
                 return oss.str();
@@ -202,7 +204,7 @@ namespace farmtrax {
                     // Point sp = vertex_point_map_.at(s);
                     // Point tp = vertex_point_map_.at(t);
                     EdgeProperties props = graph_[e];
-                    oss << "  " << s << " -> " << t << " [label=\"" << props.swath_uuid << " (" << props.weight << ")\", color=\"" << (props.is_bidirectional ? "blue" : "black") << "\"];" << std::endl;
+                    oss << "  " << s << " -> " << t << " [label=\"" << props.swath_uuid << " (" << props.weight << ", " << (props.type == SwathType::LINE ? "LINE" : "TURN") << ")\", color=\"" << (props.is_bidirectional ? "blue" : "black") << "\"];" << std::endl;
                 }
                 oss << "}" << std::endl;
                 if (!filename.empty()) {
@@ -217,9 +219,9 @@ namespace farmtrax {
             }
 
         private:
-            
-    };
+            // Helper function remains unchanged
+        };
 
-} // namespace farmtrax
+    } // namespace farmtrax
 
 #endif // MESH_HPP

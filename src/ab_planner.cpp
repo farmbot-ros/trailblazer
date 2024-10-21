@@ -54,6 +54,7 @@ private:
     farmtrax::Swaths swaths_;
     farmtrax::Route route_;
     farmtrax::Mesh mesh_;
+    farmtrax::Path pathh_;
     farmtrax::Swaths swaths_with_headlands_;
 
     sensor_msgs::msg::NavSatFix robot_loc_;
@@ -184,11 +185,13 @@ private:
 
         mesh_ = farmtrax::Mesh(swaths_);
         mesh_.build_graph();
-        RCLCPP_INFO(this->get_logger(), mesh_.to_string().c_str());
         RCLCPP_INFO(this->get_logger(), "Mesh generated");
 
         mesh_.to_dot("/home/bresilla/mesh.dot");
         RCLCPP_INFO(this->get_logger(), "Mesh saved to /home/bresilla/mesh.dot");
+
+        pathh_ = farmtrax::Path(mesh_);
+        std::vector<std::string> uuid_path = pathh_.find_optimal(farmtrax::Path::AlgorithmType::BRUTE_FORCE);
     }
 
     void process_field(std::vector<std::pair<double, double>> points) {
@@ -213,7 +216,7 @@ private:
     void process_path(std::vector<std::pair<double, double>> points){
         path_arrows_ = vector2ArrowsColor(points);
     }
-    
+
     void set_initial_point() {
         auto initial_points = swaths_with_headlands_.get_swaths()[0].swath.front();
         std::vector<std::pair<double, double>> path_points;
@@ -441,7 +444,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Generating arrows for %lu pairs", pairs.size());
         visualization_msgs::msg::MarkerArray markers;
         int num_swaths = pairs.size()-1;  // Total number of swaths
-        for (int id; id < num_swaths; id++) {
+        for (int id = 0; id < num_swaths; id++) {
             visualization_msgs::msg::Marker arrow;
             arrow.header.frame_id = "map";
             arrow.header.stamp = rclcpp::Clock().now();
