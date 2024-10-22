@@ -52,7 +52,7 @@ namespace farmtrax {
 
     // Function to remove colinear points from a polygon
     template<typename Polygon>
-    void remove_colinear_points(Polygon& polygon, double epsilon = 1e-10) {
+    void remove_colinear_points(Polygon& polygon, double epsilon = 0.01) {
         using point_type = typename boost::geometry::point_type<Polygon>::type;
         std::vector<point_type> new_points;
         auto const& points = polygon.outer();

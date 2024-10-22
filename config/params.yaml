@@ -6,7 +6,7 @@ ab_planner:
   ros__parameters:
     name: 'ab_planner'
     topic_prefix: '/fb'
-    vehicle_width: 2.0
+    vehicle_width: 4.0
     vehicle_coverage: 4.0
     alternate_freq: 1  # every 1 row
     path_angle: 80.0 # degrees

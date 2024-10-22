@@ -7,11 +7,8 @@
 #include <boost/geometry/algorithms/intersection.hpp>
 #include <boost/geometry/algorithms/envelope.hpp>
 #include <boost/geometry/algorithms/expand.hpp>
-#include <boost/geometry/algorithms/distance.hpp> // For calculating distance
-
-// Include Boost libraries for graph and R-tree
+#include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/index/rtree.hpp>
-#include <boost/graph/prim_minimum_spanning_tree.hpp>
 
 #include <boost/uuid/uuid.hpp>            // uuid class
 #include <boost/uuid/uuid_generators.hpp> // generators
@@ -49,22 +46,29 @@ namespace farmtrax {
     enum class Direction {
         FORWARD,
         REVERSE,
-        BOTH
+        ANY
     };
 
     // Struct to represent each swath, along with its properties
     struct Swath {
-        int index;                // Index of the swath
         LineString swath;         // The actual swath line (geometry)
         std::string uuid;         // A unique identifier for each swath
         SwathType type;           // The type of swath (LINE, TURN, PATH)
         Direction direction;      // The direction of the swath (FORWARD, REVERSE)
-        bool transportlane;       // Flag to indicate if it's a transport lane
-        float length;             // Length of the swath
+        double length;             // Length of the swath
 
         bool intersects(const Field& field) const {
             Polygon fieldPolygon = field.get_polygon();
             return bg::intersects(fieldPolygon, swath);
+        }
+
+        Swath create_swath(const Point& start, const Point& end, SwathType type, Direction direction, std::string uuid = "") {
+            LineString line;
+            bg::append(line, start);
+            bg::append(line, end);
+            std::string uuid_ = uuid.empty() ? boost::uuids::to_string(boost::uuids::random_generator()()) : uuid;
+            double length = bg::distance(start, end);
+            return {line, uuid_, type, direction, length};
         }
     };
 
@@ -74,12 +78,10 @@ namespace farmtrax {
 
     class Swaths {
         private:
-            double swath_width_;
-            double angle_degrees_;
-            std::vector<Swath> swaths_;  // Holds Swath structs
-            Rtree swath_rtree_;          // R-tree for efficient spatial querying of swaths
-            Polygon connecting_polygon_; // Polygon to represent the connecting swath
-            Polygon without_segments_;   // Polygon to represent the field without the segment points
+            std::vector<Swath> swaths_;             // Holds Swath structs
+            Rtree swath_rtree_;                     // R-tree for efficient spatial querying of swaths
+            std::vector<Swath> with_headland_;      // Holds Swath structs with turns
+            Polygon connecting_polygon_;            // Polygon to represent the connecting swath
 
         public:
             Swaths() = default;
@@ -90,9 +92,7 @@ namespace farmtrax {
             }
 
             void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
-                swath_width_ = swath_width;
-                angle_degrees_ = angle_degrees;
-                generate_swaths(outer_field, inner_field, alternate_freq, inner_offset);
+                generate_swaths(outer_field, inner_field, swath_width, angle_degrees, alternate_freq, inner_offset);
             }
 
             // Get the swaths as a vector of Swath structs
@@ -100,14 +100,14 @@ namespace farmtrax {
                 return swaths_;
             }
 
+            // Get the swaths with headlands as a vector of Swath structs
+            const std::vector<Swath>& get_swaths_with_headland() const {
+                return with_headland_;
+            }
+
             // Add a swath to the list of swaths
             void add_swath(const Swath& swath) {
                 swaths_.push_back(swath);
-            }
-
-            // add to nth index
-            void add_swath(const Swath& swath, int index) {
-                swaths_.insert(swaths_.begin() + index, swath);
             }
 
             // If swath intersects with field
@@ -141,7 +141,7 @@ namespace farmtrax {
                     throw std::runtime_error("No swaths available.");
                 }
             }
-            
+
             //check if two points are connected by a swath
             bool are_connected(const Point& p1, const Point& p2) {
                 LineString connection = create_connection(p1, p2);
@@ -153,46 +153,14 @@ namespace farmtrax {
                 return false;
             }
 
-            //get connecting polygon
-            const std::vector<std::pair<double,double>> get_connecting_path() const {
-                std::vector<std::pair<double, double>> boundary;
-                for (const auto& point : connecting_polygon_.outer()) {
-                    boundary.emplace_back(point.x(), point.y());
-                }
-                return boundary;
-            }
-
-            // get connecting polygon as a polygon
+            // get connecting polygon
             const Polygon get_connecting_polygon() const {
                 return connecting_polygon_;
             }
 
-            //get field without segments
-            const Polygon get_without_segments() const {
-                return without_segments_;
-            }
-
-            // Function to add a connecting swath to the swath list
-            void add_swath(const LineString& connection, SwathType swath_type, int insert_index = -1) {
-                Swath connecting_swath;
-                connecting_swath.swath = connection;
-                connecting_swath.uuid = generate_UUID();
-                connecting_swath.type = swath_type;         // Only connections are labeled as TURN
-                connecting_swath.transportlane = true;      // Can be modified as needed
-                if (insert_index != -1) {
-                    swaths_.insert(swaths_.begin() + insert_index, connecting_swath);
-                } else {
-                    swaths_.push_back(connecting_swath);
-                }
-                // Insert the connecting swath into the R-tree
-                Box swath_box;
-                boost::geometry::envelope(connection, swath_box);
-                swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
-            }
-
         private:
             // Helper function to generate swaths with a specified angle
-            void generate_swaths(const Field& outer_field_, const Field& inner_field_, int alternate_freq = 1, double inner_offset = 1.0) {
+            void generate_swaths(const Field& outer_field_, const Field& inner_field_, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
                 swaths_.clear();
                 swath_rtree_.clear(); // Clear existing entries
 
@@ -205,7 +173,7 @@ namespace farmtrax {
                 boost::geometry::envelope(fieldPolygon, boundingBox);
 
                 // Convert angle from degrees to radians
-                double angle_radians = angle_degrees_ * M_PI / 180.0;
+                double angle_radians = angle_degrees * M_PI / 180.0;
 
                 // Determine the dimensions of the bounding box
                 double width = boundingBox.max_corner().x() - boundingBox.min_corner().x();
@@ -220,8 +188,7 @@ namespace farmtrax {
                 bool alternate = true;
                 int counter = 0;
                 auto new_polygon = fieldPolygon;
-                without_segments_ = fieldPolygon;
-                for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width_) {
+                for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width) {
                     counter++;
                     // Alternate the direction of the swaths based on the frequency
                     alternate = (counter % alternate_freq == 0) ? !alternate : alternate;
@@ -236,14 +203,13 @@ namespace farmtrax {
 
                     for (const auto& segment : clipped) {
                         //if lenght is smaller than swath width, then ignore it
-                        if (bg::length(segment) < swath_width_ ) {
+                        if (bg::length(segment) < swath_width) {
                             continue;
                         }
                         Swath swath;  // Create a Swath struct for each segment
                         swath.swath = segment;
                         swath.uuid = generate_UUID();  // Generate a unique ID for each swath
                         swath.type = SwathType::LINE; // Always mark as LINE here
-                        swath.transportlane = false;  // Default, can modify as needed
                         swath.length = bg::length(segment); // Calculate the length of the swath
                         swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
                         swaths_.push_back(swath);
@@ -258,6 +224,16 @@ namespace farmtrax {
                     }
                 }
                 connecting_polygon_ = new_polygon;
+                with_headland_ = swaths_;
+                for (long unsigned int i = 0; i < connecting_polygon_.outer().size(); i++) {
+                    Swath swath;
+                    swath.swath = create_connection(connecting_polygon_.outer()[i], connecting_polygon_.outer()[(i + 1) % connecting_polygon_.outer().size()]);
+                    swath.uuid = generate_UUID();
+                    swath.type = SwathType::TURN;
+                    swath.length = bg::distance(connecting_polygon_.outer()[i], connecting_polygon_.outer()[(i + 1) % connecting_polygon_.outer().size()]);
+                    swath.direction = Direction::ANY;
+                    with_headland_.push_back(swath);
+                }
             }
 
             // Function to generate a line at a certain offset from the center, adjusted for the angle
@@ -344,8 +320,6 @@ namespace farmtrax {
                 }
                 return false;
             }
-
-            
     };
 
 } // namespace farmtrax
