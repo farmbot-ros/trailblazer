@@ -4,8 +4,6 @@
 #include "farmbot_planner/farmtrax/swath.hpp"
 #include "mesh.hpp"
 #include <boost/graph/graph_traits.hpp>
-#include <boost/graph/depth_first_search.hpp>
-#include <boost/graph/breadth_first_search.hpp>
 #include <vector>
 #include <string>
 #include <unordered_set>
@@ -17,8 +15,6 @@
 #include <iostream> // For debug output
 
 namespace farmtrax {
-    namespace bg = boost::geometry; // Ensure namespace alias is defined
-
     class Route {
         private:
             Mesh mesh_;
@@ -65,25 +61,23 @@ namespace farmtrax {
 
             // Method to select default start and end points
             void select_default_points() {
-                const auto& vertex_point_map = mesh_.vertex_point_map_;
-                // Example Strategy 1: Choose the first and last vertices in the map
                 if (!start_set_) {
-                    if (vertex_point_map.empty()) {
+                    if (boost::num_vertices(mesh_.graph_) == 0) {
                         throw std::runtime_error("Mesh graph has no vertices to select as start point.");
                     }
-                    auto it = vertex_point_map.begin();
-                    start_point_ = it->second;
+                    // Assuming VertexList is boost::vecS, vertex descriptors are integers starting from 0
+                    start_point_ = mesh_.graph_[0].point;
                     start_set_ = true;
                     std::cout << "Default start point selected: (" << start_point_.x() << ", " << start_point_.y() << ")\n";
                 }
 
                 if (!end_set_) {
-                    if (vertex_point_map.empty()) {
+                    if (boost::num_vertices(mesh_.graph_) == 0) {
                         throw std::runtime_error("Mesh graph has no vertices to select as end point.");
                     }
-                    auto it = vertex_point_map.end();
-                    --it;
-                    end_point_ = it->second;
+                    // Get the last vertex descriptor
+                    auto last_vertex = boost::num_vertices(mesh_.graph_) - 1;
+                    end_point_ = mesh_.graph_[last_vertex].point;
                     end_set_ = true;
                     std::cout << "Default end point selected: (" << end_point_.x() << ", " << end_point_.y() << ")\n";
                 }
@@ -93,13 +87,14 @@ namespace farmtrax {
 
                 /*
                 // Strategy 2: Select vertices with minimum and maximum x + y coordinates
-                auto min_max = std::minmax_element(vertex_point_map.begin(), vertex_point_map.end(),
-                    [](const std::pair<boost::graph_traits<Mesh::Graph>::vertex_descriptor, Point>& a,
-                    const std::pair<boost::graph_traits<Mesh::Graph>::vertex_descriptor, Point>& b) -> bool {
-                        return (a.second.x() + a.second.y()) < (b.second.x() + b.second.y());
+                auto min_max = std::minmax_element(boost::vertices(mesh_.graph_).first, boost::vertices(mesh_.graph_).second,
+                    [&](const Mesh::Graph::vertex_descriptor a, const Mesh::Graph::vertex_descriptor b) -> bool {
+                        const Point& pa = mesh_.graph_[a].point;
+                        const Point& pb = mesh_.graph_[b].point;
+                        return (pa.x() + pa.y()) < (pb.x() + pb.y());
                     });
-                start_point_ = min_max.first->second;
-                end_point_ = min_max.second->second;
+                start_point_ = mesh_.graph_[*min_max.first].point;
+                end_point_ = mesh_.graph_[*min_max.second].point;
                 start_set_ = true;
                 end_set_ = true;
                 */
@@ -157,32 +152,25 @@ namespace farmtrax {
                 std::unordered_set<std::string> visited_swaths;
 
                 // Initialize starting vertex
-                auto graph = mesh_.graph_;
-                auto& vertex_point_map = mesh_.vertex_point_map_;
+                auto& point_vertex_map = mesh_.point_vertex_map_;
 
                 // Find the starting vertex
-                auto start_vertex_it = std::find_if(vertex_point_map.begin(), vertex_point_map.end(),
-                    [&](const std::pair<boost::graph_traits<Mesh::Graph>::vertex_descriptor, Point>& pair) {
-                        return bg::equals(pair.second, start_point_);
-                    });
+                auto start_vertex_it = point_vertex_map.find(start_point_);
 
-                if (start_vertex_it == vertex_point_map.end()) {
+                if (start_vertex_it == point_vertex_map.end()) {
                     throw std::runtime_error("Start point not found in the mesh graph.");
                 }
 
-                auto start_vertex = start_vertex_it->first;
+                auto start_vertex = start_vertex_it->second;
 
                 // Find the ending vertex
-                auto end_vertex_it = std::find_if(vertex_point_map.begin(), vertex_point_map.end(),
-                    [&](const std::pair<boost::graph_traits<Mesh::Graph>::vertex_descriptor, Point>& pair) {
-                        return bg::equals(pair.second, end_point_);
-                    });
+                auto end_vertex_it = point_vertex_map.find(end_point_);
 
-                if (end_vertex_it == vertex_point_map.end()) {
+                if (end_vertex_it == point_vertex_map.end()) {
                     throw std::runtime_error("End point not found in the mesh graph.");
                 }
 
-                auto end_vertex = end_vertex_it->first;
+                auto end_vertex = end_vertex_it->second;
 
                 // Calculate total_swaths to include only swaths (SwathType::LINE)
                 size_t total_swaths = std::count_if(

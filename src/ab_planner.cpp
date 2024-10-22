@@ -60,7 +60,6 @@ private:
 
     sensor_msgs::msg::NavSatFix robot_loc_;
     sensor_msgs::msg::NavSatFix field_loc_;
-    nav_msgs::msg::Path path_;
 
     farmbot_interfaces::msg::Segments segments_;
     visualization_msgs::msg::MarkerArray field_arrows_;
@@ -74,7 +73,6 @@ private:
     rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
     rclcpp::Client<farmbot_interfaces::srv::GoToField>::SharedPtr goto_field_client_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr path_arrows_pub_;
@@ -105,7 +103,6 @@ public:
         get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>(topic_prefix_param + "/pln/get_field" );
 
         // Create the path publisher
-        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>(topic_prefix_param + "/pln/path", 10);
         inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pln/inner_field", 10);
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pln/outer_field", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pln/arrow_swath", 10);
@@ -129,7 +126,6 @@ private:
         if (!planner_initialized_) {
             return;
         }
-        path_publisher_->publish(path_);
         outer_polygon_publisher_->publish(outer_polygon_);
         inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
@@ -180,7 +176,6 @@ private:
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         inner_polygon_ = vector2Polygon(hl.get_border_points());
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
-        path_ = vector2Path(swaths_.get_swaths());
         // field_arrows_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
@@ -189,7 +184,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Mesh generated");
 
         route_ = farmtrax::Route(mesh_);
-        auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::BREADTH_FIRST_SEARCH);
+        auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
         field_arrows_ = vector2ArrowsColor(swath_path);
         route_.print_path();
     }
@@ -202,13 +197,11 @@ private:
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         inner_polygon_ = vector2Polygon(hl.get_border_points());
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
-        path_ = vector2Path(swaths_.get_swaths());
         // field_arrows_ = vector2Arrows(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
         planner_.gen_route(swaths_, vehicle_coverage_*alternate_freq_);
         swaths_with_headlands_ = planner_.get_swaths();
-        // path_ = vector2Path(swaths_with_headlands.get_swaths());
         field_arrows_ = vector2ArrowsColor(swaths_with_headlands_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands_.get_swaths().size());
     }

@@ -55,7 +55,7 @@ namespace farmtrax {
         std::string uuid;         // A unique identifier for each swath
         SwathType type;           // The type of swath (LINE, TURN, PATH)
         Direction direction;      // The direction of the swath (FORWARD, REVERSE)
-        float length;             // Length of the swath
+        double length;             // Length of the swath
 
         bool intersects(const Field& field) const {
             Polygon fieldPolygon = field.get_polygon();
@@ -67,7 +67,8 @@ namespace farmtrax {
             bg::append(line, start);
             bg::append(line, end);
             std::string uuid_ = uuid.empty() ? boost::uuids::to_string(boost::uuids::random_generator()()) : uuid;
-            return {line, uuid_, type, direction, 0.0};
+            double length = bg::distance(start, end);
+            return {line, uuid_, type, direction, length};
         }
     };
 

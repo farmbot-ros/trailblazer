@@ -46,6 +46,14 @@ namespace farmtrax {
             : is_bidirectional(bidirectional), swath_uuid(uuid), type(swath_type), weight(w) {}
     };
 
+    struct VertexProperties {
+        Point point;
+
+        // Optional: Add a constructor for convenience
+        VertexProperties() = default;
+        VertexProperties(const Point& p) : point(p) {}
+    };
+
     // Comparator for Point
     struct PointComp {
         bool operator()(const Point& lhs, const Point& rhs) const {
@@ -65,20 +73,18 @@ namespace farmtrax {
             Swaths swaths_;
 
         public:
-            // Define the graph type with EdgeProperties
+            // Define the graph type with VertexProperties and EdgeProperties
             typedef boost::adjacency_list<
                 boost::listS,                  // OutEdgeList
                 boost::vecS,                   // VertexList
                 boost::directedS,              // Directed graph
-                boost::no_property,            // Vertex properties
+                VertexProperties,              // Vertex properties
                 EdgeProperties                 // Edge properties
             > Graph;
 
             Graph graph_;
-            // Map to store unique vertices
+            // Map to store unique vertices based on their points
             std::map<Point, boost::graph_traits<Graph>::vertex_descriptor, PointComp> point_vertex_map_;
-            // Reverse map for printing (vertex_descriptor -> Point)
-            std::map<boost::graph_traits<Graph>::vertex_descriptor, Point> vertex_point_map_;
             // List of required edges (swaths)
             std::vector<boost::graph_traits<Graph>::edge_descriptor> required_edges_;
             // Map from UUID to Swath for quick retrieval
@@ -98,7 +104,6 @@ namespace farmtrax {
                 // Clear any existing graph data
                 graph_ = Graph();
                 point_vertex_map_.clear();
-                vertex_point_map_.clear();
                 required_edges_.clear();
                 uuid_to_swath_.clear();
 
@@ -109,8 +114,8 @@ namespace farmtrax {
                         return it->second;
                     } else {
                         boost::graph_traits<Graph>::vertex_descriptor v = boost::add_vertex(graph_);
+                        graph_[v].point = p;  // Set the vertex property
                         point_vertex_map_[p] = v;
-                        vertex_point_map_[v] = p;
                         return v;
                     }
                 };
@@ -162,7 +167,7 @@ namespace farmtrax {
                 boost::graph_traits<Graph>::vertex_iterator vi, vi_end;
                 for (boost::tie(vi, vi_end) = boost::vertices(graph_); vi != vi_end; ++vi) {
                     boost::graph_traits<Graph>::vertex_descriptor v = *vi;
-                    Point p = vertex_point_map_.at(v);
+                    const Point& p = graph_[v].point;
                     oss << "Vertex " << v << ": (" << p.x() << ", " << p.y() << ")" << std::endl;
                 }
 
@@ -172,11 +177,14 @@ namespace farmtrax {
                     boost::graph_traits<Graph>::edge_descriptor e = *ei;
                     boost::graph_traits<Graph>::vertex_descriptor s = boost::source(e, graph_);
                     boost::graph_traits<Graph>::vertex_descriptor t = boost::target(e, graph_);
-                    Point sp = vertex_point_map_.at(s);
-                    Point tp = vertex_point_map_.at(t);
-                    EdgeProperties props = graph_[e];
-                    oss << "Edge " << e << ": (" << sp.x() << ", " << sp.y() << ") -> (" << tp.x() << ", " << tp.y() << ")";
-                    oss << " (swath: " << props.swath_uuid << ", type: " << static_cast<int>(props.type) << ", bidirectional: " << props.is_bidirectional << ", weight: " << props.weight << ")" << std::endl;
+                    const Point& sp = graph_[s].point;
+                    const Point& tp = graph_[t].point;
+                    const EdgeProperties& props = graph_[e];
+                    oss << "Edge " << e << ": (" << sp.x() << ", " << sp.y() << ") -> ("
+                        << tp.x() << ", " << tp.y() << ")";
+                    oss << " (swath: " << props.swath_uuid << ", type: "
+                        << static_cast<int>(props.type) << ", bidirectional: "
+                        << props.is_bidirectional << ", weight: " << props.weight << ")" << std::endl;
                 }
 
                 return oss.str();
@@ -191,7 +199,7 @@ namespace farmtrax {
                 boost::graph_traits<Graph>::vertex_iterator vi, vi_end;
                 for (boost::tie(vi, vi_end) = boost::vertices(graph_); vi != vi_end; ++vi) {
                     boost::graph_traits<Graph>::vertex_descriptor v = *vi;
-                    Point p = vertex_point_map_.at(v);
+                    const Point& p = graph_[v].point;
                     oss << "  " << v << " [label=\"(" << p.x() << ", " << p.y() << ")\"];" << std::endl;
                 }
 
@@ -201,10 +209,15 @@ namespace farmtrax {
                     boost::graph_traits<Graph>::edge_descriptor e = *ei;
                     boost::graph_traits<Graph>::vertex_descriptor s = boost::source(e, graph_);
                     boost::graph_traits<Graph>::vertex_descriptor t = boost::target(e, graph_);
-                    // Point sp = vertex_point_map_.at(s);
-                    // Point tp = vertex_point_map_.at(t);
-                    EdgeProperties props = graph_[e];
-                    oss << "  " << s << " -> " << t << " [label=\"" << props.swath_uuid << " (" << props.weight << ", " << (props.type == SwathType::LINE ? "LINE" : "TURN") << ")\", color=\"" << (props.is_bidirectional ? "blue" : "black") << "\"];" << std::endl;
+                    // Point sp = graph_[s].point;
+                    // Point tp = graph_[t].point;
+                    const EdgeProperties& props = graph_[e];
+                    oss << "  " << s << " -> " << t << " [label=\""
+                        << props.swath_uuid << " (" << props.weight << ", "
+                        << (props.type == SwathType::LINE ? "LINE" : "TURN")
+                        << ")\", color=\""
+                        << (props.is_bidirectional ? "blue" : "black")
+                        << "\"];" << std::endl;
                 }
                 oss << "}" << std::endl;
                 if (!filename.empty()) {
@@ -222,6 +235,6 @@ namespace farmtrax {
             // Helper function remains unchanged
         };
 
-    } // namespace farmtrax
+} // namespace farmtrax
 
 #endif // MESH_HPP
