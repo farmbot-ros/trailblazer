@@ -38,21 +38,12 @@ namespace farmtrax {
     struct EdgeProperties {
         Swath swath;                    // Swath object
         double weight;                  // Weight of the edge (for algorithms)
-
         EdgeProperties() = default;
         EdgeProperties(const Swath& swath, double weight) : swath(swath), weight(weight) {}
     };
 
     struct VertexProperties {
         Point point;
-
-        //comparison operator for vertices
-        bool operator==(const VertexProperties& rhs) const {
-            //user a tolerance for floating-point comparisons
-            const double epsilon = 0.01;
-            return (std::abs(point.x() - rhs.point.x()) < epsilon) && (std::abs(point.y() - rhs.point.y()) < epsilon);
-        }
-
         VertexProperties() = default;
         VertexProperties(const Point& point) : point(point) {}
     };
@@ -88,8 +79,6 @@ namespace farmtrax {
             Graph graph_;
             // Map to store unique vertices based on their points
             std::map<Point, boost::graph_traits<Graph>::vertex_descriptor, PointComp> point_vertex_map_;
-            // List of required edges (swaths)
-            std::vector<boost::graph_traits<Graph>::edge_descriptor> required_edges_;
 
         public:
             // Default constructor
@@ -105,15 +94,16 @@ namespace farmtrax {
                 // Clear any existing graph data
                 graph_ = Graph();
                 point_vertex_map_.clear();
-                required_edges_.clear();
 
                 // Lambda to get or create a vertex
                 auto get_or_create_vertex = [&](const Point& p) -> boost::graph_traits<Graph>::vertex_descriptor {
                     auto it = point_vertex_map_.find(p);
                     if (it != point_vertex_map_.end()) {
+                        // std::cout << "Found existing vertex at " << p.x() << ", " << p.y() << std::endl;
                         return it->second;
                     } else {
                         boost::graph_traits<Graph>::vertex_descriptor v = boost::add_vertex(graph_);
+                        // std::cout << "Created new vertex at " << p.x() << ", " << p.y() << std::endl;
                         graph_[v].point = p;  // Set the vertex property
                         point_vertex_map_[p] = v;
                         return v;
@@ -135,22 +125,16 @@ namespace farmtrax {
                         boost::graph_traits<Graph>::edge_descriptor e;
                         bool inserted;
                         boost::tie(e, inserted) = boost::add_edge(start_vertex, end_vertex, props, graph_);
-                        if (inserted) {
-                            required_edges_.push_back(e); // Mark as required
-                        }
                     }
                     else {
                         // Headlands are undirected edges (add two directed edges)
                         EdgeProperties props_forward(swath, weight_on_headlands ? 0.0 : 1.0);
-                        EdgeProperties props_reverse(swath.reverse_new_uuid(), weight_on_headlands ? 0.0 : 1.0);
-                        // EdgeProperties props_forward(swath.uuid, SwathType::TURN, weight_on_headlands ? 0.0 : 1.0);
-                        // EdgeProperties props_reverse(swath.uuid, SwathType::TURN, weight_on_headlands ? 0.0 : 1.0);
+                        EdgeProperties props_reverse(swath.reverse(), weight_on_headlands ? 0.0 : 1.0);
 
                         boost::graph_traits<Graph>::edge_descriptor e1, e2;
                         bool inserted1, inserted2;
                         boost::tie(e1, inserted1) = boost::add_edge(start_vertex, end_vertex, props_forward, graph_);
                         boost::tie(e2, inserted2) = boost::add_edge(end_vertex, start_vertex, props_reverse, graph_);
-                        // Headlands are optional, not required to be traversed
                     }
                 }
             }

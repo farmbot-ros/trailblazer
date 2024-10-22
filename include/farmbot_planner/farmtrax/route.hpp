@@ -215,8 +215,6 @@ namespace farmtrax {
                 // Iterate over all outgoing edges from the current_vertex
                 boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
                 for (boost::tie(ei, ei_end) = boost::out_edges(current_vertex, mesh_.graph_); ei != ei_end; ++ei) {
-                    std::cout << "Visiting edge (" << boost::source(*ei, mesh_.graph_) << ","
-                              << boost::target(*ei, mesh_.graph_) << ")\n";
                     auto edge = *ei;
                     const EdgeProperties& props = mesh_.graph_[edge]; // Retrieve properties of the edge
                     std::string swath_uuid = props.swath.uuid;  // Get the UUID of the swath associated with this edge
@@ -228,7 +226,7 @@ namespace farmtrax {
                     // If the edge is a swath and has already been visited, skip it
                     if (is_swath) {
                         if (visited_swaths.find(swath_uuid) != visited_swaths.end()) {
-                            std::cout << "Swath UUID " << swath_uuid << " already visited. Skipping.\n";
+                            // std::cout << "Swath UUID " << swath_uuid << " already visited. Skipping.\n";
                             continue; // Skip this edge as it's already been traversed
                         }
                     }
@@ -238,7 +236,7 @@ namespace farmtrax {
 
                     // Prevent immediate backtracking to the previous vertex via a non-swath edge (e.g., a turn)
                     if (!is_swath && target_vertex == previous_vertex) {
-                        std::cout << "Skipping traversal back to previous vertex via turn.\n";
+                        // std::cout << "Skipping traversal back to previous vertex via turn.\n";
                         continue; // Skip to avoid redundant traversal
                     }
 
@@ -247,10 +245,11 @@ namespace farmtrax {
                         // Mark the swath as visited and add it to the current path
                         visited_swaths.insert(swath_uuid);
                         path.push_back(props.swath); // Add Swath object directly
-                        std::cout << "Traversing swath UUID: " << swath_uuid << "\n";
+                        // std::cout << "Traversing through Line UUID: " << swath_uuid << "\n";
                     } else {
                         // For non-swath edges (e.g., turns), simply log the traversal
-                        std::cout << "Traversing turn Swath UUID: " << swath_uuid << "\n";
+                        path.push_back(props.swath); // Add Swath object directly
+                        // std::cout << "Traversing through Turn UUID: " << swath_uuid << "\n";
                     }
 
                     // Recurse with the updated current vertex and previous vertex
@@ -271,7 +270,7 @@ namespace farmtrax {
                     if (is_swath) {
                         visited_swaths.erase(swath_uuid); // Unmark the swath as visited
                         path.pop_back();                   // Remove the swath from the current path
-                        std::cout << "Backtracking from swath UUID: " << swath_uuid << "\n";
+                        // std::cout << "Backtracking from swath UUID: " << swath_uuid << "\n";
                     }
                 }
 

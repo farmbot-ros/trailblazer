@@ -2,6 +2,7 @@
 #define SWATH_HPP
 
 #include "field.hpp"
+#include <algorithm>
 #include <boost/geometry.hpp>
 #include <boost/geometry/geometries/segment.hpp>
 #include <boost/geometry/algorithms/intersection.hpp>
@@ -63,19 +64,15 @@ namespace farmtrax {
         }
 
         Swath reverse() const {
-            LineString reversed;
-            for (auto it = swath.rbegin(); it != swath.rend(); ++it) {
-                reversed.push_back(*it);
-            }
-            return {reversed, uuid, type, direction, length};
-        }
-
-        Swath reverse_new_uuid() const {
-            LineString reversed;
-            for (auto it = swath.rbegin(); it != swath.rend(); ++it) {
-                reversed.push_back(*it);
-            }
-            return {reversed, boost::uuids::to_string(boost::uuids::random_generator()()), type, direction, length};
+            Swath new_swath = *this;
+            LineString reversed_swath = swath;
+            std::reverse(reversed_swath.begin(), reversed_swath.end());
+            auto new_uuid = boost::uuids::to_string(boost::uuids::random_generator()());
+            auto new_direction = (this->direction == Direction::FORWARD) ? Direction::REVERSE : Direction::FORWARD;
+            new_swath.swath = reversed_swath;
+            new_swath.uuid = new_uuid;
+            new_swath.direction = new_direction;
+            return new_swath;
         }
 
         Swath create_swath(const Point& start, const Point& end, SwathType type, Direction direction, std::string uuid = "") {
@@ -83,8 +80,7 @@ namespace farmtrax {
             bg::append(line, start);
             bg::append(line, end);
             std::string uuid_ = uuid.empty() ? boost::uuids::to_string(boost::uuids::random_generator()()) : uuid;
-            double length = bg::distance(start, end);
-            return {line, uuid_, type, direction, length};
+            return {line, uuid_, type, direction, 0.0};
         }
     };
 

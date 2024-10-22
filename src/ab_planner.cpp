@@ -7,7 +7,6 @@
 #include "farmbot_planner/utils/geojson.hpp"
 #include "farmbot_planner/farmtrax/field.hpp"
 #include "farmbot_planner/farmtrax/swath.hpp"
-#include "farmbot_planner/farmtrax/planner.hpp"
 #include "farmbot_planner/farmtrax/mesh.hpp"
 #include "farmbot_planner/farmtrax/route.hpp"
 #include <visualization_msgs/msg/marker.hpp>
@@ -52,7 +51,6 @@ private:
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
-    farmtrax::Planner planner_;
 
     farmtrax::Mesh mesh_;
     farmtrax::Route route_;
@@ -73,6 +71,7 @@ private:
     rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
     rclcpp::Client<farmbot_interfaces::srv::GoToField>::SharedPtr goto_field_client_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr path_arrows_pub_;
@@ -145,7 +144,7 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No ENU points received.");
             return;
         }
-        process_field2(field_in_enu);
+        process_field(field_in_enu);
 
         // if (goto_field_) {
         //     set_initial_point();
@@ -168,7 +167,7 @@ private:
         planner_initialized_ = true;
     }
 
-    void process_field2(std::vector<std::pair<double, double>> points) {
+    void process_field(std::vector<std::pair<double, double>> points) {
         field_.gen_field(points);
         farmtrax::Field hl = field_.get_buffered(vehicle_width_* 2.0, farmtrax::BufferType::SHRINK);
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
@@ -187,23 +186,6 @@ private:
         auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
         field_arrows_ = vector2ArrowsColor(swath_path);
         route_.print_path();
-    }
-
-    void process_field(std::vector<std::pair<double, double>> points) {
-        field_.gen_field(points);
-        farmtrax::Field hl = field_.get_buffered(vehicle_width_* 2.0, farmtrax::BufferType::SHRINK);
-        RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
-
-        outer_polygon_ = vector2Polygon(field_.get_border_points());
-        inner_polygon_ = vector2Polygon(hl.get_border_points());
-        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
-        // field_arrows_ = vector2Arrows(swaths_.get_swaths());
-        RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
-
-        planner_.gen_route(swaths_, vehicle_coverage_*alternate_freq_);
-        swaths_with_headlands_ = planner_.get_swaths();
-        field_arrows_ = vector2ArrowsColor(swaths_with_headlands_.get_swaths());
-        RCLCPP_INFO(this->get_logger(), "Swaths with headlands generated: %lu", swaths_with_headlands_.get_swaths().size());
     }
 
     void process_path(std::vector<std::pair<double, double>> points){
