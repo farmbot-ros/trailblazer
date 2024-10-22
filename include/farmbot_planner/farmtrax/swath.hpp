@@ -62,6 +62,14 @@ namespace farmtrax {
             return bg::intersects(fieldPolygon, swath);
         }
 
+        Swath reverse() const {
+            LineString reversed;
+            for (auto it = swath.rbegin(); it != swath.rend(); ++it) {
+                reversed.push_back(*it);
+            }
+            return {reversed, uuid, type, direction, length};
+        }
+
         Swath create_swath(const Point& start, const Point& end, SwathType type, Direction direction, std::string uuid = "") {
             LineString line;
             bg::append(line, start);
