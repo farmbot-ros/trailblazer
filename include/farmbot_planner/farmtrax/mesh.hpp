@@ -48,20 +48,6 @@ namespace farmtrax {
         VertexProperties(const Point& point) : point(point) {}
     };
 
-    // Comparator for Point
-    struct PointComp {
-        bool operator()(const Point& lhs, const Point& rhs) const {
-            // Use a tolerance for floating-point comparisons
-            const double epsilon = 0.01;
-
-            if (std::abs(lhs.x() - rhs.x()) > epsilon) {
-                return lhs.x() < rhs.x();
-            } else {
-                return lhs.y() < rhs.y();
-            }
-        }
-    };
-
     class Mesh {
         private:
             Swaths swaths_;
@@ -77,8 +63,6 @@ namespace farmtrax {
             > Graph;
 
             Graph graph_;
-            // Map to store unique vertices based on their points
-            std::map<Point, boost::graph_traits<Graph>::vertex_descriptor, PointComp> point_vertex_map_;
 
         public:
             // Default constructor
@@ -93,19 +77,26 @@ namespace farmtrax {
             void build_graph(bool weight_on_headlands = false) {
                 // Clear any existing graph data
                 graph_ = Graph();
-                point_vertex_map_.clear();
+
+                // Lambda to find a vertex based on a point
+                auto find_vertex_by_point = [&](const Point& p) -> boost::graph_traits<Graph>::vertex_descriptor {
+                    boost::graph_traits<Graph>::vertex_iterator vi, vi_end;
+                    for (boost::tie(vi, vi_end) = boost::vertices(graph_); vi != vi_end; ++vi) {
+                        if (bg::equals(graph_[*vi].point, p)) {
+                            return *vi;
+                        }
+                    }
+                    return boost::graph_traits<Graph>::null_vertex();
+                };
 
                 // Lambda to get or create a vertex
                 auto get_or_create_vertex = [&](const Point& p) -> boost::graph_traits<Graph>::vertex_descriptor {
-                    auto it = point_vertex_map_.find(p);
-                    if (it != point_vertex_map_.end()) {
-                        // std::cout << "Found existing vertex at " << p.x() << ", " << p.y() << std::endl;
-                        return it->second;
+                    boost::graph_traits<Graph>::vertex_descriptor v = find_vertex_by_point(p);
+                    if (v != boost::graph_traits<Graph>::null_vertex()) {
+                        return v;
                     } else {
-                        boost::graph_traits<Graph>::vertex_descriptor v = boost::add_vertex(graph_);
-                        // std::cout << "Created new vertex at " << p.x() << ", " << p.y() << std::endl;
+                        v = boost::add_vertex(graph_);
                         graph_[v].point = p;  // Set the vertex property
-                        point_vertex_map_[p] = v;
                         return v;
                     }
                 };
@@ -174,6 +165,38 @@ namespace farmtrax {
                 return oss.str();
             }
 
+            //function to get the string representation of the graph, each vertex and then tabbed edges
+            std::string to_string2() const {
+                std::ostringstream oss;
+                oss << "Vertices: " << boost::num_vertices(graph_) << std::endl;
+                oss << "Edges: " << boost::num_edges(graph_) << std::endl;
+
+                // Iterate over all vertices
+                boost::graph_traits<Graph>::vertex_iterator vi, vi_end;
+                for (boost::tie(vi, vi_end) = boost::vertices(graph_); vi != vi_end; ++vi) {
+                    boost::graph_traits<Graph>::vertex_descriptor v = *vi;
+                    const Point& p = graph_[v].point;
+                    oss << "Vertex " << v << ": (" << p.x() << ", " << p.y() << ")" << std::endl;
+                    // Iterate over all edges
+                    boost::graph_traits<Graph>::out_edge_iterator ei, ei_end;
+                    for (boost::tie(ei, ei_end) = boost::out_edges(v, graph_); ei != ei_end; ++ei) {
+                        boost::graph_traits<Graph>::edge_descriptor e = *ei;
+                        boost::graph_traits<Graph>::vertex_descriptor t = boost::target(e, graph_);
+                        const Point& tp = graph_[t].point;
+                        const EdgeProperties& props = graph_[e];
+                        oss << "\tEdge " << e << ": (" << p.x() << ", " << p.y() << ") -> ("
+                            << tp.x() << ", " << tp.y() << ")";
+                        oss << "("
+                            << "swath: " << props.swath.uuid
+                            << ", type: " << static_cast<int>(props.swath.type)
+                            << ", weight: " << props.weight
+                            << ")" << std::endl;
+                    }
+                }
+
+                return oss.str();
+            }
+
             // Create Graphviz DOT file
             std::string to_dot(const std::string& filename = "") const {
                 std::ostringstream oss;
@@ -193,8 +216,6 @@ namespace farmtrax {
                     boost::graph_traits<Graph>::edge_descriptor e = *ei;
                     boost::graph_traits<Graph>::vertex_descriptor s = boost::source(e, graph_);
                     boost::graph_traits<Graph>::vertex_descriptor t = boost::target(e, graph_);
-                    // Point sp = graph_[s].point;
-                    // Point tp = graph_[t].point;
                     const EdgeProperties& props = graph_[e];
                     oss << "  " << s << " -> " << t << " [label=\""
                         << props.swath.uuid << " (" << props.weight << ", "

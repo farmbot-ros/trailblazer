@@ -180,7 +180,7 @@ private:
 
         mesh_ = farmtrax::Mesh(swaths_);
         mesh_.build_graph();
-        RCLCPP_INFO(this->get_logger(), "Mesh generated");
+        RCLCPP_INFO(this->get_logger(), mesh_.to_string2().c_str());
 
         route_ = farmtrax::Route(mesh_);
         auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
