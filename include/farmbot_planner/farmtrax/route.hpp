@@ -1,6 +1,7 @@
 #ifndef PATH_HPP
 #define PATH_HPP
 
+#include "farmbot_planner/farmtrax/swath.hpp"
 #include "mesh.hpp"
 #include <boost/graph/graph_traits.hpp>
 #include <boost/graph/depth_first_search.hpp>
@@ -24,8 +25,7 @@ namespace farmtrax {
             Point end_point_;
             bool start_set_;
             bool end_set_;
-
-            std::vector<std::string> uuids;
+            std::vector<Swath> swaths;
 
         public:
             // Enum to define different algorithm types
@@ -109,29 +109,42 @@ namespace farmtrax {
                 switch (type) {
                     case Algorithm::A_STAR: {
                         // Implementation for A* can be added later
-                        uuids =  a_star();
+                        swaths =  a_star();
                         break;
                     }
                     case Algorithm::BREATH_FIRST_SEARCH: {
                         // Implementation for BFS can be added later
-                        uuids = breath_first_search();
+                        swaths = breath_first_search();
                         break;
                     }
                     case Algorithm::BRUTE_FORCE: {
-                        uuids = brute_force();
+                        swaths = brute_force();
                         break;
                     }
                     case Algorithm::EXHAUSTIVE_SEARCH: {
-                        uuids = exhaustive_search();
+                        swaths = exhaustive_search();
                         break;
                     }
                     default:
                         // throw std::invalid_argument("Unsupported algorithm type.");
-                        uuids = std::vector<std::string>();
+                        swaths = std::vector<Swath>();
                         break;
                 }
+                return swaths;
+            }
+
+            std::string print_path() const {
+                std::string path_str;
+                for (const auto& swath : swaths) {
+                    path_str += swath.uuid + " -> ";
+                }
+                return path_str;
+            }
+
+        private:
+            std::vector<Swath> uuid_2_swaths(const std::vector<std::string>& path_uuids) const {
                 std::vector<Swath> swath_path;
-                for (const auto& uuid : uuids) {
+                for (const auto& uuid : path_uuids) {
                     auto it = mesh_.uuid_to_swath_.find(uuid);
                     if (it != mesh_.uuid_to_swath_.end()) {
                         swath_path.push_back(it->second);
@@ -140,20 +153,10 @@ namespace farmtrax {
                     }
                 }
                 return swath_path;
-
             }
 
-            std::string print_path() const {
-                std::string path_str;
-                for (const auto& uuid : uuids) {
-                    path_str += uuid + " -> ";
-                }
-                return path_str;
-            }
-
-        private:
             // Brute Force Implementation
-            std::vector<std::string> brute_force() {
+            std::vector<Swath> brute_force() {
                 std::vector<std::string> path;
                 std::unordered_set<std::string> visited_swaths;
 
@@ -203,7 +206,7 @@ namespace farmtrax {
 
                 if (found) {
                     std::cout << "Valid path found.\n";
-                    return path;
+                    return uuid_2_swaths(path);
                 } else {
                     throw std::runtime_error("No valid path found that visits all swaths.");
                 }
@@ -279,22 +282,22 @@ namespace farmtrax {
             }
 
             // Placeholder for A* algorithm
-            std::vector<std::string> a_star() {
-                std::vector<std::string> path;
+            std::vector<Swath> a_star() {
+                std::vector<Swath> path;
                 // Implementation for A* can be added here
                 return path;
             }
 
             // Placeholder for Breadth First Search algorithm
-            std::vector<std::string> breath_first_search() {
-                std::vector<std::string> path;
+            std::vector<Swath> breath_first_search() {
+                std::vector<Swath> path;
                 // Implementation for BFS can be added here
                 return path;
             }
 
             // Placeholder for exhaustive search algorithm
-            std::vector<std::string> exhaustive_search() {
-                std::vector<std::string> path;
+            std::vector<Swath> exhaustive_search() {
+                std::vector<Swath> path;
                 // Implementation for exhaustive search can be added here
                 return path;
             }
