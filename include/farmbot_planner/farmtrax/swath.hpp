@@ -61,6 +61,14 @@ namespace farmtrax {
             Polygon fieldPolygon = field.get_polygon();
             return bg::intersects(fieldPolygon, swath);
         }
+
+        Swath create_swath(const Point& start, const Point& end, SwathType type, Direction direction, std::string uuid = "") {
+            LineString line;
+            bg::append(line, start);
+            bg::append(line, end);
+            std::string uuid_ = uuid.empty() ? boost::uuids::to_string(boost::uuids::random_generator()()) : uuid;
+            return {line, uuid_, type, direction, 0.0};
+        }
     };
 
     // R-tree type definitions
@@ -132,7 +140,7 @@ namespace farmtrax {
                     throw std::runtime_error("No swaths available.");
                 }
             }
-            
+
             //check if two points are connected by a swath
             bool are_connected(const Point& p1, const Point& p2) {
                 LineString connection = create_connection(p1, p2);

@@ -9,7 +9,7 @@
 #include "farmbot_planner/farmtrax/swath.hpp"
 #include "farmbot_planner/farmtrax/planner.hpp"
 #include "farmbot_planner/farmtrax/mesh.hpp"
-#include "farmbot_planner/farmtrax/path.hpp"
+#include "farmbot_planner/farmtrax/route.hpp"
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -55,7 +55,7 @@ private:
     farmtrax::Planner planner_;
 
     farmtrax::Mesh mesh_;
-    farmtrax::Path pathh_;
+    farmtrax::Route route_;
     farmtrax::Swaths swaths_with_headlands_;
 
     sensor_msgs::msg::NavSatFix robot_loc_;
@@ -188,14 +188,10 @@ private:
         mesh_.build_graph();
         RCLCPP_INFO(this->get_logger(), "Mesh generated");
 
-        mesh_.to_dot("/home/bresilla/mesh.dot");
-        RCLCPP_INFO(this->get_logger(), "Mesh saved to /home/bresilla/mesh.dot");
-
-        pathh_ = farmtrax::Path(mesh_);
-        std::vector<std::string> uuid_path = pathh_.find_optimal(farmtrax::Path::AlgorithmType::BRUTE_FORCE);
-        std::vector<farmtrax::Swath> swath_path = pathh_.gen_swaths(uuid_path);
+        route_ = farmtrax::Route(mesh_);
+        auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::BRUTE_FORCE);
         field_arrows_ = vector2ArrowsColor(swath_path);
-        pathh_.print_path(uuid_path);
+        route_.print_path();
     }
 
     void process_field(std::vector<std::pair<double, double>> points) {
