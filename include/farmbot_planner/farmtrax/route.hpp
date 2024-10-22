@@ -5,6 +5,7 @@
 #include "mesh.hpp"
 #include <boost/graph/graph_traits.hpp>
 #include <boost/graph/depth_first_search.hpp>
+#include <boost/graph/breadth_first_search.hpp>
 #include <vector>
 #include <string>
 #include <unordered_set>
@@ -31,9 +32,9 @@ namespace farmtrax {
             // Enum to define different algorithm types
             enum class Algorithm {
                 A_STAR,
-                BREATH_FIRST_SEARCH,
-                BRUTE_FORCE,
                 EXHAUSTIVE_SEARCH,
+                BREADTH_FIRST_SEARCH,
+                DEPTH_FIRS_SEARCH,
             };
 
             // Default constructor
@@ -108,25 +109,20 @@ namespace farmtrax {
                 select_default_points(); // Set start and end points
                 switch (type) {
                     case Algorithm::A_STAR: {
-                        // Implementation for A* can be added later
-                        swaths =  a_star();
-                        break;
+                        throw std::invalid_argument("A* algorithm not implemented yet.");
                     }
-                    case Algorithm::BREATH_FIRST_SEARCH: {
-                        // Implementation for BFS can be added later
-                        swaths = breath_first_search();
-                        break;
+                    case Algorithm::BREADTH_FIRST_SEARCH: {
+                        throw std::invalid_argument("Breadth First Search algorithm not implemented yet.");
                     }
-                    case Algorithm::BRUTE_FORCE: {
-                        swaths = brute_force();
-                        break;
+                    case Algorithm::DEPTH_FIRS_SEARCH: {
+                        throw std::invalid_argument("Depth First Search algorithm not implemented yet.");
                     }
                     case Algorithm::EXHAUSTIVE_SEARCH: {
                         swaths = exhaustive_search();
                         break;
                     }
                     default:
-                        // throw std::invalid_argument("Unsupported algorithm type.");
+                        throw std::invalid_argument("Unsupported algorithm type.");
                         swaths = std::vector<Swath>();
                         break;
                 }
@@ -156,7 +152,7 @@ namespace farmtrax {
             }
 
             // Brute Force Implementation
-            std::vector<Swath> brute_force() {
+            std::vector<Swath> exhaustive_search() {
                 std::vector<std::string> path;
                 std::unordered_set<std::string> visited_swaths;
 
@@ -202,7 +198,7 @@ namespace farmtrax {
                 // Recursive backtracking to find the path
                 // Initialize previous_vertex as invalid to indicate no previous vertex
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor invalid_vertex = boost::graph_traits<Mesh::Graph>::null_vertex();
-                bool found = recursive_brute_force(start_vertex, end_vertex, visited_swaths, path, total_swaths, invalid_vertex);
+                bool found = recursive_ex(start_vertex, end_vertex, visited_swaths, path, total_swaths, invalid_vertex);
 
                 if (found) {
                     std::cout << "Valid path found.\n";
@@ -213,7 +209,7 @@ namespace farmtrax {
             }
 
             // Recursive helper function for brute force
-            bool recursive_brute_force(
+            bool recursive_ex(
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor current_vertex,
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor end_vertex,
                 std::unordered_set<std::string>& visited_swaths,
@@ -249,9 +245,9 @@ namespace farmtrax {
                     // Move to the target vertex
                     auto target_vertex = boost::target(edge, mesh_.graph_);
 
-                    // Prevent immediate backtracking via headlands
+                    // Prevent immediate backtracking via turns
                     if (!is_swath && target_vertex == previous_vertex) {
-                        std::cout << "Skipping traversal back to previous vertex via headland.\n";
+                        std::cout << "Skipping traversal back to previous vertex via turn.\n";
                         continue;
                     }
 
@@ -261,11 +257,11 @@ namespace farmtrax {
                         path.push_back(swath_uuid);
                         std::cout << "Traversing swath UUID: " << swath_uuid << "\n";
                     } else {
-                        std::cout << "Traversing headland UUID: " << swath_uuid << "\n";
+                        std::cout << "Traversing turn UUID: " << swath_uuid << "\n";
                     }
 
                     // Recurse with updated previous_vertex
-                    bool found = recursive_brute_force(target_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex);
+                    bool found = recursive_ex(target_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex);
                     if (found) {
                         return true;
                     }
@@ -281,26 +277,6 @@ namespace farmtrax {
                 return false; // No valid path found from this vertex
             }
 
-            // Placeholder for A* algorithm
-            std::vector<Swath> a_star() {
-                std::vector<Swath> path;
-                // Implementation for A* can be added here
-                return path;
-            }
-
-            // Placeholder for Breadth First Search algorithm
-            std::vector<Swath> breath_first_search() {
-                std::vector<Swath> path;
-                // Implementation for BFS can be added here
-                return path;
-            }
-
-            // Placeholder for exhaustive search algorithm
-            std::vector<Swath> exhaustive_search() {
-                std::vector<Swath> path;
-                // Implementation for exhaustive search can be added here
-                return path;
-            }
     };
 } // namespace farmtrax
 

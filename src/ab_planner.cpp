@@ -189,7 +189,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Mesh generated");
 
         route_ = farmtrax::Route(mesh_);
-        auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::BRUTE_FORCE);
+        auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::BREADTH_FIRST_SEARCH);
         field_arrows_ = vector2ArrowsColor(swath_path);
         route_.print_path();
     }
