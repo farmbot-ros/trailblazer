@@ -142,7 +142,7 @@ namespace farmtrax {
                     else {
                         // Headlands are undirected edges (add two directed edges)
                         EdgeProperties props_forward(swath, weight_on_headlands ? 0.0 : 1.0);
-                        EdgeProperties props_reverse(swath.reverse(), weight_on_headlands ? 0.0 : 1.0);
+                        EdgeProperties props_reverse(swath.reverse_new_uuid(), weight_on_headlands ? 0.0 : 1.0);
                         // EdgeProperties props_forward(swath.uuid, SwathType::TURN, weight_on_headlands ? 0.0 : 1.0);
                         // EdgeProperties props_reverse(swath.uuid, SwathType::TURN, weight_on_headlands ? 0.0 : 1.0);
 

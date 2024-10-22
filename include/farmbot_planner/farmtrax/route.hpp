@@ -13,7 +13,6 @@
 #include <limits>
 #include <cmath>
 #include <iostream> // For debug output
-#include <unordered_map> // Added for uuid_to_swath_map_
 
 namespace farmtrax {
     class Route {
@@ -23,8 +22,7 @@ namespace farmtrax {
             Point end_point_;
             bool start_set_;
             bool end_set_;
-            std::vector<Swath> swaths;
-            std::unordered_map<std::string, Swath> uuid_to_swath_map_; // Added for efficient Swath retrieval
+            std::vector<Swath> swaths; // Stores the resulting path as Swath objects
 
         public:
             // Enum to define different algorithm types
@@ -32,7 +30,7 @@ namespace farmtrax {
                 A_STAR,
                 EXHAUSTIVE_SEARCH,
                 BREADTH_FIRST_SEARCH,
-                DEPTH_FIRS_SEARCH,
+                DEPTH_FIRST_SEARCH,
             };
 
             // Default constructor
@@ -40,12 +38,7 @@ namespace farmtrax {
 
             // Constructor that initializes with a Mesh instance
             Route(Mesh mesh) : mesh_(mesh), start_set_(false), end_set_(false) {
-                // Populate uuid_to_swath_map_ for efficient lookups
-                boost::graph_traits<Mesh::Graph>::edge_iterator ei, ei_end;
-                for (boost::tie(ei, ei_end) = boost::edges(mesh_.graph_); ei != ei_end; ++ei) {
-                    const EdgeProperties& props = mesh_.graph_[*ei];
-                    uuid_to_swath_map_[props.swath.uuid] = props.swath;
-                }
+                // No need to populate uuid_to_swath_map_ anymore
             }
 
             // Method to set the initial and final points
@@ -118,7 +111,7 @@ namespace farmtrax {
                     case Algorithm::BREADTH_FIRST_SEARCH: {
                         throw std::invalid_argument("Breadth First Search algorithm not implemented yet.");
                     }
-                    case Algorithm::DEPTH_FIRS_SEARCH: {
+                    case Algorithm::DEPTH_FIRST_SEARCH: { // Corrected typo
                         throw std::invalid_argument("Depth First Search algorithm not implemented yet.");
                     }
                     case Algorithm::EXHAUSTIVE_SEARCH: {
@@ -150,8 +143,8 @@ namespace farmtrax {
 
             // Brute Force Implementation: Exhaustive Search
             std::vector<Swath> exhaustive_search() {
-                // Vector to store the path as a sequence of swath UUIDs
-                std::vector<std::string> path;
+                // Vector to store the path as a sequence of Swath objects
+                std::vector<Swath> path;
 
                 // Set to keep track of visited swaths to ensure each swath is traversed only once
                 std::unordered_set<std::string> visited_swaths;
@@ -199,16 +192,7 @@ namespace farmtrax {
 
                 if (found) {
                     std::cout << "Valid path found.\n";
-                    std::vector<Swath> swath_path;
-                    for (const auto& uuid : path) {
-                        auto it = uuid_to_swath_map_.find(uuid);
-                        if (it != uuid_to_swath_map_.end()) {
-                            swath_path.push_back(it->second);
-                        } else {
-                            throw std::runtime_error("Swath UUID not found in mesh: " + uuid);
-                        }
-                    }
-                    return swath_path;
+                    return path; // Directly return the path containing Swath objects
                 } else {
                     throw std::runtime_error("No valid path found that visits all swaths.");
                 }
@@ -219,7 +203,7 @@ namespace farmtrax {
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor current_vertex,    // Current position in the graph
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor end_vertex,        // Destination vertex
                 std::unordered_set<std::string>& visited_swaths,                       // Set of already visited swaths
-                std::vector<std::string>& path,                                        // Current path as a sequence of swath UUIDs
+                std::vector<Swath>& path,                                              // Current path as a sequence of Swath objects
                 size_t total_swaths,                                                   // Total number of swaths to visit
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor previous_vertex    // Previously visited vertex to prevent immediate backtracking
             ) {
@@ -262,11 +246,11 @@ namespace farmtrax {
                     if (is_swath) {
                         // Mark the swath as visited and add it to the current path
                         visited_swaths.insert(swath_uuid);
-                        path.push_back(swath_uuid);
+                        path.push_back(props.swath); // Add Swath object directly
                         std::cout << "Traversing swath UUID: " << swath_uuid << "\n";
                     } else {
                         // For non-swath edges (e.g., turns), simply log the traversal
-                        std::cout << "Traversing turn UUID: " << swath_uuid << "\n";
+                        std::cout << "Traversing turn Swath UUID: " << swath_uuid << "\n";
                     }
 
                     // Recurse with the updated current vertex and previous vertex
