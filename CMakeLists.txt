@@ -32,10 +32,6 @@ set(executables
     getthe_field
 )
 
-set (utils
-    # fieldgen
-)
-
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -98,19 +94,10 @@ set(dependencies_sys
     ${CURL_LIBRARIES}
 )
 
-foreach(util ${utils})
-    add_library(${util} src/utils/${util}.cpp)
-    ament_target_dependencies(${util} ${dependencies_ros})
-    target_link_libraries(${util} ${dependencies_sys})
-endforeach()
-
 foreach(executable ${executables})
     add_executable(${executable} src/${executable}.cpp)
     ament_target_dependencies(${executable} ${dependencies_ros})
     target_link_libraries(${executable} ${dependencies_sys})
-    foreach(util ${utils})
-        target_link_libraries(${executable} ${util})
-    endforeach()
 endforeach()
 
 install(TARGETS
