@@ -15,15 +15,11 @@ using GetTheField = farmbot_interfaces::srv::GetTheField;
 
 class GetTheFieldService : public rclcpp::Node{
     private:
-        std::string name;
-        std::string topic_prefix_param;
         std::string geojson_file_;
         rclcpp::Service<GetTheField>::SharedPtr service_;
 
     public:
         GetTheFieldService(): Node("getthe_field"){
-            name = this->get_parameter_or<std::string>("name", "getthe_field");
-            topic_prefix_param = this->get_parameter_or<std::string>("topic_prefix", "/fb");
 
             std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_planner");
             std::string geojson_path = package_share_directory + "/config/field.geojson";
@@ -31,8 +27,7 @@ class GetTheFieldService : public rclcpp::Node{
             geojson_file_ = this->get_parameter_or<std::string>("geojson_file", geojson_path);
 
             // Create the service
-            service_ = this->create_service<GetTheField>(
-                topic_prefix_param + "/pln/get_field",
+            service_ = this->create_service<GetTheField>("pln/get_field",
                 std::bind(&GetTheFieldService::handle_get_the_field, this, std::placeholders::_1, std::placeholders::_2)
             );
 

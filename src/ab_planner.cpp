@@ -38,8 +38,6 @@ struct PathSegment {
 
 class FieldProcessorNode : public rclcpp::Node {
 private:
-    std::string name;
-    std::string topic_prefix_param;
     double vehicle_width_;
     double vehicle_coverage_;
     int alternate_freq_;
@@ -48,6 +46,8 @@ private:
 
     bool planner_initialized_ = false;
     bool gps_locked_ = false;
+
+    std::string namespace_;
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
@@ -87,8 +87,6 @@ public:
             .allow_undeclared_parameters(true)
             .automatically_declare_parameters_from_overrides(true)
         ) {
-        name = this->get_parameter_or<std::string>("name", "ab_planner");
-        topic_prefix_param = this->get_parameter_or<std::string>("topic_prefix", "/fb");
         vehicle_width_ = this->get_parameter_or<double>("vehicle_width", 0.5);
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
         alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
@@ -96,25 +94,31 @@ public:
         goto_field_ = this->get_parameter_or<bool>("goto_field", true);
 
         // Create the service client
-        gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>(topic_prefix_param + "/loc/gps2enu");
-        enu2gps_client_ = this->create_client<farmbot_interfaces::srv::Enu2Gps>(topic_prefix_param + "/loc/enu2gps");
-        goto_field_client_ = this->create_client<farmbot_interfaces::srv::GoToField>(topic_prefix_param + "/pln/get_route");
-        get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>(topic_prefix_param + "/pln/get_field" );
+        gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
+        enu2gps_client_ = this->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
+        goto_field_client_ = this->create_client<farmbot_interfaces::srv::GoToField>("ln/get_route");
+        get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field" );
 
         // Create the path publisher
-        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pln/inner_field", 10);
-        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(topic_prefix_param + "/pln/outer_field", 10);
-        field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pln/arrow_swath", 10);
-        path_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(topic_prefix_param + "/pln/arrow_path", 10);
+        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/inner_field", 10);
+        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/outer_field", 10);
+        field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
+        path_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_path", 10);
 
         // Create the location subscriber
-        loc_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>(topic_prefix_param + "/loc/fix", 10, [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+        loc_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("loc/fix", 10, [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
             robot_loc_ = *msg;
             gps_locked_ = true;
         });
 
         // Timers
         visualization_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_service_start_timer, this));
+
+        // Namespace
+        namespace_ = this->get_namespace();
+        if (!namespace_.empty() && namespace_[0] == '/') {
+            namespace_ = namespace_.substr(1);
+        }
 
         //put runner in different thread
         std::thread([this] { runner(); }).detach();
@@ -299,7 +303,7 @@ private:
     // vector of vector of double to ros polygon
     geometry_msgs::msg::PolygonStamped vector2Polygon(const std::vector<std::pair<double, double>>& points) {
         geometry_msgs::msg::PolygonStamped polygon;
-        polygon.header.frame_id = "map";
+        polygon.header.frame_id = namespace_ + "/map";
         polygon.header.stamp = rclcpp::Clock().now();
         for (const auto& point : points) {
             geometry_msgs::msg::Point32 p;
@@ -313,7 +317,7 @@ private:
 
     nav_msgs::msg::Path vector2Path(const std::vector<farmtrax::Swath>& swaths) {
         nav_msgs::msg::Path path;
-        path.header.frame_id = "map";
+        path.header.frame_id = namespace_ + "/map";
         path.header.stamp = rclcpp::Clock().now();
         for (const auto& swath : swaths) {
             for (const auto& point : swath.swath) {
@@ -331,7 +335,7 @@ private:
         int id = 0;
         for (const auto& swath : swaths) {
             visualization_msgs::msg::Marker arrow;
-            arrow.header.frame_id = "map";
+            arrow.header.frame_id = namespace_ + "/map";
             arrow.header.stamp = rclcpp::Clock().now();
             arrow.ns = "swath_arrows";
             arrow.id = id++;
@@ -375,7 +379,7 @@ private:
         int num_swaths = swaths.size();  // Total number of swaths
         for (const auto& swath : swaths) {
             visualization_msgs::msg::Marker arrow;
-            arrow.header.frame_id = "map";
+            arrow.header.frame_id = namespace_ + "/map";
             arrow.header.stamp = rclcpp::Clock().now();
             arrow.ns = "swath_arrows";
             arrow.id = id++;
@@ -421,7 +425,7 @@ private:
         int num_swaths = pairs.size()-1;  // Total number of swaths
         for (int id = 0; id < num_swaths; id++) {
             visualization_msgs::msg::Marker arrow;
-            arrow.header.frame_id = "map";
+            arrow.header.frame_id = namespace_ + "/map";
             arrow.header.stamp = rclcpp::Clock().now();
             arrow.ns = "path_arrows";
             arrow.id = id;

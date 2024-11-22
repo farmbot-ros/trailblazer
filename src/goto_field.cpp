@@ -22,22 +22,18 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
 
 class OsrmRouteServiceNode : public rclcpp::Node{
     private:
-        std::string name;
-        std::string topic_prefix_param;
         rclcpp::Service<GetRoute>::SharedPtr service_;
         std::string osrm_server_url_;
 
     public:
         OsrmRouteServiceNode(): Node("goto_field"){
-            name = this->get_parameter_or<std::string>("name", "goto_field");
-            topic_prefix_param = this->get_parameter_or<std::string>("topic_prefix", "/fb");
             // Set the public OSRM server URL
             osrm_server_url_ = this->get_parameter_or<std::string>("osrm_server_url", "http://router.project-osrm.org");
 
 
             // Create the service
             service_ = this->create_service<GetRoute>(
-                topic_prefix_param + "/pln/get_route",
+                "pln/get_route",
                 std::bind(&OsrmRouteServiceNode::handle_get_route, this, std::placeholders::_1, std::placeholders::_2)
             );
 

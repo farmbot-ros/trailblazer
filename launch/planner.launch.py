@@ -22,13 +22,11 @@ def launch_setup(context, *args, **kwargs):
         name='ab_planner',
         namespace=namespace,
         parameters=[
-            {"frame_prefix": namespace+"/"},
-            {"namespace": namespace},
             yaml.safe_load(open(param_file))['ab_planner']['ros__parameters'],
             yaml.safe_load(open(param_file))['global']['ros__parameters']
         ]
     )
-    # nodes_array.append(ab_planner)
+    nodes_array.append(ab_planner)
 
     goto_field = Node(
         package='farmbot_planner',
@@ -36,8 +34,6 @@ def launch_setup(context, *args, **kwargs):
         name='goto_field',
         namespace=namespace,
         parameters=[
-            {"frame_prefix": namespace+"/"},
-            {"namespace": namespace},
             yaml.safe_load(open(param_file))['goto_field']['ros__parameters'],
             yaml.safe_load(open(param_file))['global']['ros__parameters']
         ]
@@ -50,19 +46,17 @@ def launch_setup(context, *args, **kwargs):
         name='getthe_field',
         namespace=namespace,
         parameters=[
-            {"frame_prefix": namespace+"/"},
-            {"namespace": namespace},
             yaml.safe_load(open(param_file))['getthe_field']['ros__parameters'],
             yaml.safe_load(open(param_file))['global']['ros__parameters']
         ]
     )
     nodes_array.append(getthe_field)
-    
+
     return nodes_array
 
 
-def generate_launch_description(): 
-    namespace_arg = DeclareLaunchArgument('namespace', default_value='fb')
+def generate_launch_description():
+    namespace_arg = DeclareLaunchArgument('namespace', default_value='fbot')
 
     return LaunchDescription([
             namespace_arg,
