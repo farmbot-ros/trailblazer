@@ -21,7 +21,11 @@
 #include "diagnostic_updater/diagnostic_updater.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 
+
 #include <farmbot_interfaces/action/detail/waypoints__struct.hpp>
+#include "farmbot_interfaces/msg/waypoint.hpp"
+#include "farmbot_interfaces/msg/segment.hpp"
+#include "farmbot_interfaces/msg/segments.hpp"
 #include <iostream>
 #include <nav_msgs/msg/detail/path__struct.hpp>
 #include <rclcpp_action/server_goal_handle.hpp>
@@ -41,9 +45,10 @@ private:
     // Waypoints
     farmbot_interfaces::msg::Waypoints path_nav;
 
-    // Path subscriber
-    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
-    nav_msgs::msg::Path path;
+    // Segments subscriber
+    rclcpp::Subscription<farmbot_interfaces::msg::Segments>::SharedPtr segments_sub_;
+    farmbot_interfaces::msg::Segments segments_;
+
 
     // Action client
     rclcpp_action::Client<farmbot_interfaces::action::Waypoints>::SharedPtr control_client_;
@@ -65,7 +70,7 @@ public:
         // Action client
         control_client_ = rclcpp_action::create_client<farmbot_interfaces::action::Waypoints>(this, "nav/mission");
         // Subscriber
-        path_sub = this->create_subscription<nav_msgs::msg::Path>("pln/path", 10, std::bind(&Navigator::path_callback, this, _1));
+        segments_sub_ = this->create_subscription<farmbot_interfaces::msg::Segments>("pln/segments", 10, std::bind(&Navigator::segments_callback, this, _1));
 
         namespace_ = this->get_namespace();
         if (!namespace_.empty() && namespace_[0] == '/') {
@@ -87,17 +92,44 @@ private:
         stat.summary(status.level, status.message);
     }
 
-    void path_callback(const nav_msgs::msg::Path::SharedPtr msg) {
-        path = *msg;
-        RCLCPP_INFO(this->get_logger(), "Received path with %zu waypoints", path.poses.size());
+    void segments_callback(const farmbot_interfaces::msg::Segments::SharedPtr msg) {
+        segments_ = *msg;
+        RCLCPP_INFO(this->get_logger(), "Received path");
         // Reset subscriber to prevent multiple paths
-        send_waypoints_goal(path);
+        send_waypoints_goal();
         // Send action goal
-        this->path_sub.reset();
+        this->segments_sub_.reset();
     }
 
-    void send_waypoints_goal(const nav_msgs::msg::Path& path) {
-        // Wait for the action server to be ready
+    void send_waypoints_goal() {
+        nav_msgs::msg::Path path;
+        geometry_msgs::msg::PoseStamped pose_stamped;
+        for (int i = 0; i < segments_.segments.size(); i += 1) {
+            pose_stamped.pose = segments_.segments[i].origin.pose;
+            path.poses.push_back(pose_stamped);
+            pose_stamped.pose = segments_.segments[i].destination.pose;
+            path.poses.push_back(pose_stamped);
+        }
+
+            // for (int i = 0; i < swaths.size() - 1; i += 2) {
+            //     geometry_msgs::msg::PoseStamped pose;
+            //     pose.pose.position.x = swaths[i].swath[0].x();
+            //     pose.pose.position.y = swaths[i].swath[0].y();
+            //     path.poses.push_back(pose);
+            //     geometry_msgs::msg::PoseStamped pose2;
+            //     pose2.pose.position.x = swaths[i].swath[1].x();
+            //     pose2.pose.position.y = swaths[i].swath[1].y();
+            //     path.poses.push_back(pose2);
+            //     geometry_msgs::msg::PoseStamped pose3;
+            //     pose3.pose.position.x = swaths[i + 1].swath[1].x();
+            //     pose3.pose.position.y = swaths[i + 1].swath[1].y();
+            //     path.poses.push_back(pose3);
+            //     geometry_msgs::msg::PoseStamped pose4;
+            //     pose4.pose.position.x = swaths[i + 1].swath[0].x();
+            //     pose4.pose.position.y = swaths[i + 1].swath[0].y();
+            //     path.poses.push_back(pose4);
+            // }
+
         while (!control_client_->wait_for_action_server(std::chrono::seconds(1)) && rclcpp::ok()) {
             RCLCPP_INFO(this->get_logger(), "Waiting for the action server to be ready...");
         }

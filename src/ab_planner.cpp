@@ -1,3 +1,4 @@
+#include <farmbot_interfaces/msg/detail/segments__struct.hpp>
 #include <memory>
 #include <vector>
 #include <string>
@@ -59,7 +60,6 @@ private:
     sensor_msgs::msg::NavSatFix robot_loc_;
     sensor_msgs::msg::NavSatFix field_loc_;
 
-    farmbot_interfaces::msg::Segments segments_;
     visualization_msgs::msg::MarkerArray field_arrows_;
     visualization_msgs::msg::MarkerArray path_arrows_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
@@ -72,10 +72,10 @@ private:
     rclcpp::Client<farmbot_interfaces::srv::GoToField>::SharedPtr goto_field_client_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
 
-    // Path publisher
-    nav_msgs::msg::Path path_msg_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
-    rclcpp::TimerBase::SharedPtr path_timer_;
+    // Segment publisher
+    rclcpp::TimerBase::SharedPtr on_timer_;
+    farmbot_interfaces::msg::Segments segments_;
+    rclcpp::Publisher<farmbot_interfaces::msg::Segments>::SharedPtr segment_publisher_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr path_arrows_pub_;
@@ -109,9 +109,10 @@ public:
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
         path_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_path", 10);
 
-        // Path publisher
-        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("pln/path", 10);
-        path_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_path_timer, this));
+        // Path & Segment publisher
+        segment_publisher_ = this->create_publisher<farmbot_interfaces::msg::Segments>("pln/segments", 10);
+        on_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_timer, this));
+
 
         // Create the location subscriber
         loc_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("loc/fix", 10, [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
@@ -143,9 +144,9 @@ private:
         }
     }
 
-    void on_path_timer() {
+    void on_timer() {
         if (!planner_initialized_) { return; }
-        path_publisher_->publish(path_msg_);
+        segment_publisher_->publish(segments_);
     }
 
     void runner() {
@@ -200,9 +201,8 @@ private:
         route_ = farmtrax::Route(mesh_);
         auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
         field_arrows_ = vector2ArrowsColor(swath_path);
-        path_msg_ = vector2Path(swath_path);
+        segments_ = vector2Segments(swath_path);
         RCLCPP_INFO(this->get_logger(), "Route generated: %lu", swath_path.size());
-        // route_.print_path();
     }
 
     void process_path(std::vector<std::pair<double, double>> points){
@@ -341,6 +341,27 @@ private:
             }
         }
         return path;
+    }
+
+    farmbot_interfaces::msg::Segments vector2Segments(const std::vector<farmtrax::Swath>& swaths) {
+        farmbot_interfaces::msg::Segments segments;
+        for (const auto& swath : swaths) {
+            farmbot_interfaces::msg::Segment segment;
+            if (swath.direction == farmtrax::Direction::REVERSE) {
+                segment.origin.pose.position.x = swath.swath[1].x();
+                segment.origin.pose.position.y = swath.swath[1].y();
+                segment.destination.pose.position.x = swath.swath[0].x();
+                segment.destination.pose.position.y = swath.swath[0].y();
+                segments.segments.push_back(segment);
+            } else {
+                segment.origin.pose.position.x = swath.swath[0].x();
+                segment.origin.pose.position.y = swath.swath[0].y();
+                segment.destination.pose.position.x = swath.swath[1].x();
+                segment.destination.pose.position.y = swath.swath[1].y();
+                segments.segments.push_back(segment);
+            }
+        }
+        return segments;
     }
 
     visualization_msgs::msg::MarkerArray vector2Arrows(const std::vector<farmtrax::Swath>& swaths) {
