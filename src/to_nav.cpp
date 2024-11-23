@@ -34,7 +34,6 @@
 #include <string>
 
 using namespace std::chrono_literals;
-
 using namespace std::placeholders;
 using Trigger = farmbot_interfaces::srv::Trigger;
 
@@ -111,26 +110,7 @@ private:
             path.poses.push_back(pose_stamped);
         }
 
-            // for (int i = 0; i < swaths.size() - 1; i += 2) {
-            //     geometry_msgs::msg::PoseStamped pose;
-            //     pose.pose.position.x = swaths[i].swath[0].x();
-            //     pose.pose.position.y = swaths[i].swath[0].y();
-            //     path.poses.push_back(pose);
-            //     geometry_msgs::msg::PoseStamped pose2;
-            //     pose2.pose.position.x = swaths[i].swath[1].x();
-            //     pose2.pose.position.y = swaths[i].swath[1].y();
-            //     path.poses.push_back(pose2);
-            //     geometry_msgs::msg::PoseStamped pose3;
-            //     pose3.pose.position.x = swaths[i + 1].swath[1].x();
-            //     pose3.pose.position.y = swaths[i + 1].swath[1].y();
-            //     path.poses.push_back(pose3);
-            //     geometry_msgs::msg::PoseStamped pose4;
-            //     pose4.pose.position.x = swaths[i + 1].swath[0].x();
-            //     pose4.pose.position.y = swaths[i + 1].swath[0].y();
-            //     path.poses.push_back(pose4);
-            // }
-
-        while (!control_client_->wait_for_action_server(std::chrono::seconds(1)) && rclcpp::ok()) {
+        while (!control_client_->wait_for_action_server(1s) && rclcpp::ok()) {
             RCLCPP_INFO(this->get_logger(), "Waiting for the action server to be ready...");
         }
 
@@ -175,7 +155,7 @@ private:
 
     void feedback_callback(rclcpp_action::ClientGoalHandle<farmbot_interfaces::action::Waypoints>::SharedPtr,
         const std::shared_ptr<const farmbot_interfaces::action::Waypoints::Feedback> feedback) {
-        RCLCPP_INFO(this->get_logger(), "Received feedback: last_uuid: %s", feedback->last_uuid.data.c_str());
+        RCLCPP_INFO(this->get_logger(), "Received feedback");
         // Optionally update diagnostic status or other variables
     }
 
