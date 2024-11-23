@@ -71,7 +71,11 @@ private:
     rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
     rclcpp::Client<farmbot_interfaces::srv::GoToField>::SharedPtr goto_field_client_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
+
+    // Path publisher
+    nav_msgs::msg::Path path_msg_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
+    rclcpp::TimerBase::SharedPtr path_timer_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr path_arrows_pub_;
@@ -105,6 +109,10 @@ public:
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
         path_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_path", 10);
 
+        // Path publisher
+        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("pln/path", 10);
+        path_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_path_timer, this));
+
         // Create the location subscriber
         loc_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("loc/fix", 10, [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
             robot_loc_ = *msg;
@@ -126,15 +134,18 @@ public:
 
 private:
     void on_service_start_timer() {
-        if (!planner_initialized_) {
-            return;
-        }
+        if (!planner_initialized_) { return; }
         outer_polygon_publisher_->publish(outer_polygon_);
         inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
         if (goto_field_) {
             path_arrows_pub_->publish(path_arrows_);
         }
+    }
+
+    void on_path_timer() {
+        if (!planner_initialized_) { return; }
+        path_publisher_->publish(path_msg_);
     }
 
     void runner() {
@@ -184,12 +195,14 @@ private:
 
         mesh_ = farmtrax::Mesh(swaths_);
         mesh_.build_graph();
-        RCLCPP_INFO(this->get_logger(), mesh_.to_string2().c_str());
+        // RCLCPP_INFO(this->get_logger(), mesh_.to_string2().c_str());
 
         route_ = farmtrax::Route(mesh_);
         auto swath_path = route_.find_optimal(farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
         field_arrows_ = vector2ArrowsColor(swath_path);
-        route_.print_path();
+        path_msg_ = vector2Path(swath_path);
+        RCLCPP_INFO(this->get_logger(), "Route generated: %lu", swath_path.size());
+        // route_.print_path();
     }
 
     void process_path(std::vector<std::pair<double, double>> points){
