@@ -45,7 +45,6 @@ private:
 
     rclcpp::TimerBase::SharedPtr visualization_timer_;
 
-    rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
 
     rclcpp::TimerBase::SharedPtr on_timer_;
@@ -68,7 +67,6 @@ public:
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
 
         // Create the service clients
-        gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
         get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field");
 
         // Create publishers
@@ -78,10 +76,10 @@ public:
 
         // Segment publisher
         segment_publisher_ = this->create_publisher<farmbot_interfaces::msg::Segments>("pln/segments", 10);
-        on_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_timer, this));
+        on_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::on_timer, this));
 
         // Timers
-        visualization_timer_ = this->create_wall_timer(std::chrono::seconds(1), std::bind(&FieldProcessorNode::on_service_start_timer, this));
+        visualization_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::on_service_start_timer, this));
 
         // Namespace
         namespace_ = this->get_namespace();
@@ -147,50 +145,6 @@ private:
         auto navpts = result.get()->points;
         for (const auto& point : navpts) {
             points.emplace_back(std::make_pair(point.x, point.y));
-        }
-        return points;
-    }
-
-    std::vector<std::vector<double>> get_the_field(std::string geojson_file_path = "") {
-        std::vector<std::vector<double>> points;
-        auto request = std::make_shared<farmbot_interfaces::srv::GetTheField::Request>();
-        request->geojson_file = geojson_file_path;
-        while (!get_the_field_client_->wait_for_service(1s)) {
-            if (!rclcpp::ok()) {
-                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                return {};
-            }
-            RCLCPP_INFO(this->get_logger(), "Service not available, waiting again...");
-        }
-        auto result = get_the_field_client_->async_send_request(request);
-        auto navpts = result.get()->field;
-        for (const auto& point : navpts) {
-            points.emplace_back(std::vector<double>{point.latitude, point.longitude});
-        }
-        return points;
-    }
-
-    std::vector<std::pair<double, double>> nav_to_enu(const std::vector<std::vector<double>>& navpts) {
-        std::vector<std::pair<double, double>> points;
-        auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
-        for (const auto& point : navpts) {
-            sensor_msgs::msg::NavSatFix gps_point;
-            gps_point.latitude = point[0];
-            gps_point.longitude = point[1];
-            gps_point.altitude = 0.0;  // Adjust if altitude data is available
-            request->gps.push_back(gps_point);
-        }
-        while (!gps2enu_client_->wait_for_service(1s)) {
-            if (!rclcpp::ok()) {
-                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                return {};
-            }
-            RCLCPP_INFO(this->get_logger(), "Service not available, waiting again...");
-        }
-        auto result = gps2enu_client_->async_send_request(request);
-        auto getres = result.get()->enu;
-        for (const auto& point : getres) {
-            points.emplace_back(std::pair<double, double>{point.position.x, point.position.y});
         }
         return points;
     }
