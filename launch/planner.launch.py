@@ -52,17 +52,17 @@ def launch_setup(context, *args, **kwargs):
     )
     nodes_array.append(getthe_field)
 
-    # getthe_field = Node(
-    #     package='farmbot_planner',
-    #     executable="to_nav",
-    #     name='to_nav',
-    #     namespace=namespace,
-    #     parameters=[
-    #         yaml.safe_load(open(param_file))['to_nav']['ros__parameters'],
-    #         yaml.safe_load(open(param_file))['global']['ros__parameters']
-    #     ]
-    # )
-    # nodes_array.append(getthe_field)
+    to_nav = Node(
+        package='farmbot_planner',
+        executable="to_nav",
+        name='to_nav',
+        namespace=namespace,
+        parameters=[
+            yaml.safe_load(open(param_file))['to_nav']['ros__parameters'],
+            yaml.safe_load(open(param_file))['global']['ros__parameters']
+        ]
+    )
+    # nodes_array.append(to_nav)
 
     return nodes_array
 

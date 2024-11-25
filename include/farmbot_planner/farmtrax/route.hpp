@@ -34,12 +34,9 @@ namespace farmtrax {
             };
 
             // Default constructor
-            Route() : mesh_(), start_set_(false), end_set_(false) {}
+            Route()  = default;
 
-            // Constructor that initializes with a Mesh instance
-            Route(Mesh mesh) : mesh_(mesh), start_set_(false), end_set_(false) {
-                // No need to populate uuid_to_swath_map_ anymore
-            }
+
 
             // Method to set the initial and final points
             void set_points(const Point& start, const Point& end) {
@@ -102,7 +99,8 @@ namespace farmtrax {
                 */
             }
 
-            std::vector<Swath> find_optimal(Algorithm type) {
+            void find_optimal(Mesh mesh, Algorithm type) {
+                mesh_ = mesh;
                 select_default_points(); // Set start and end points
                 switch (type) {
                     case Algorithm::A_STAR: {
@@ -123,6 +121,9 @@ namespace farmtrax {
                         swaths = std::vector<Swath>();
                         break;
                 }
+            }
+
+            std::vector<Swath> get_swaths() const {
                 return swaths;
             }
 
@@ -213,58 +214,46 @@ namespace farmtrax {
                 }
             }
 
-            // Recursive helper function for exhaustive search using backtracking
             bool recursive_ex2(
-                boost::graph_traits<Mesh::Graph>::vertex_descriptor current_vertex,    // Current position in the graph
-                boost::graph_traits<Mesh::Graph>::vertex_descriptor end_vertex,        // Destination vertex
-                std::unordered_set<std::string>& visited_swaths,                       // Set of already visited LINE swaths
-                std::vector<Swath>& path,                                              // Current path as a sequence of Swath objects
-                size_t total_swaths,                                                   // Total number of LINE swaths to visit
-                boost::graph_traits<Mesh::Graph>::vertex_descriptor previous_vertex    // Previously visited vertex to prevent immediate backtracking
-            ) {
-                // Base Case: If current vertex is the end vertex and all LINE swaths have been visited
-                if (visited_swaths.size() == total_swaths && current_vertex == end_vertex) {
-                    std::cout << "Valid path found: ";
-                    for (const auto& swath : path) {
-                        std::cout << swath.uuid << " -> ";
+                    boost::graph_traits<Mesh::Graph>::vertex_descriptor current_vertex,
+                    boost::graph_traits<Mesh::Graph>::vertex_descriptor end_vertex,
+                    std::unordered_set<std::string>& visited_swaths,
+                    std::vector<Swath>& path,
+                    size_t total_swaths,
+                    boost::graph_traits<Mesh::Graph>::vertex_descriptor previous_vertex
+                ) {
+                    // Base Case: If current vertex is the end vertex and all LINE swaths have been visited
+                    if (visited_swaths.size() == total_swaths && current_vertex == end_vertex) {
+                        return true; // Valid path found
                     }
-                    std::cout << "END\n";
-                    return true; // Signal that a valid path has been found
-                }
 
-                // Retrieve all outgoing edges from the current vertex
-                boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
-                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> outgoing_edges;
-                for (boost::tie(ei, ei_end) = boost::out_edges(current_vertex, mesh_.graph_); ei != ei_end; ++ei) {
-                    outgoing_edges.push_back(*ei);
-                }
+                    // Retrieve all outgoing edges from the current vertex
+                    boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
+                    std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> line_edges;
+                    std::vector<std::pair<boost::graph_traits<Mesh::Graph>::edge_descriptor, bool>> turn_edges_with_flag;
 
-                // Separate outgoing edges into LINE and TURN edges
-                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> line_edges;
-                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> turn_edges;
+                    for (boost::tie(ei, ei_end) = boost::out_edges(current_vertex, mesh_.graph_); ei != ei_end; ++ei) {
+                        auto edge = *ei;
+                        const EdgeProperties& props = mesh_.graph_[edge];
 
-                for (const auto& edge : outgoing_edges) {
-                    const EdgeProperties& props = mesh_.graph_[edge];
-                    if (props.swath.type == SwathType::LINE) {
-                        line_edges.push_back(edge);
-                    } else {
-                        turn_edges.push_back(edge);
+                        if (props.swath.type == SwathType::LINE) {
+                            line_edges.push_back(edge);
+                        } else {
+                            boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(edge, mesh_.graph_);
+                            bool has_unvisited_line = has_unvisited_line_edge(next_vertex, visited_swaths);
+                            turn_edges_with_flag.emplace_back(edge, has_unvisited_line);
+                        }
                     }
-                }
 
-                // Process LINE edges first
-                if (!line_edges.empty()) {
+                    // Process LINE edges first
+                    //
                     for (const auto& edge : line_edges) {
                         const EdgeProperties& props = mesh_.graph_[edge];
                         const std::string& swath_uuid = props.swath.uuid;
-
-                        // Determine the target vertex of the current edge
                         boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(edge, mesh_.graph_);
 
-                        // Prevent immediate backtracking by skipping edges that lead back to the previous vertex
+                        // Prevent immediate backtracking
                         if (next_vertex == previous_vertex) {
-                            std::cout << "Skipping LINE edge " << swath_uuid << " to prevent immediate backtracking to vertex "
-                                      << previous_vertex << "\n";
                             continue;
                         }
 
@@ -273,117 +262,75 @@ namespace farmtrax {
                             continue;
                         }
 
-                        std::cout << "Visiting LINE edge " << swath_uuid << "\n";
-
-                        // Mark the LINE swath as visited
+                        // Visit the LINE swath
                         visited_swaths.insert(swath_uuid);
-                        // Add the LINE swath to the current path
                         path.push_back(props.swath);
-                        // Recursively visit the next vertex
+
+                        // Recursive call
                         if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex)) {
-                            return true; // Path found, propagate the success signal
+                            return true;
                         }
-                        // Backtrack: Unmark the LINE swath and remove it from the path
+
+                        // Backtrack
                         visited_swaths.erase(swath_uuid);
                         path.pop_back();
                     }
-                }
-                // Handle TURN edges if no LINE edges are available
-                else if (!turn_edges.empty()) {
-                    // Pair each TURN edge with a boolean indicating if it leads to a vertex with unvisited LINE swaths
-                    std::vector<std::pair<boost::graph_traits<Mesh::Graph>::edge_descriptor, bool>> prioritized_turns;
-                    for (const auto& edge : turn_edges) {
-                        boost::graph_traits<Mesh::Graph>::vertex_descriptor target_vertex = boost::target(edge, mesh_.graph_);
-                        bool has_unvisited_line = has_unvisited_line_edge(target_vertex, visited_swaths);
-                        prioritized_turns.emplace_back(edge, has_unvisited_line);
-                    }
 
-                    // Sort TURN edges: those leading to vertices with unvisited LINE swaths come first
-                    std::sort(prioritized_turns.begin(), prioritized_turns.end(),
-                        [](const std::pair<boost::graph_traits<Mesh::Graph>::edge_descriptor, bool>& a,
-                           const std::pair<boost::graph_traits<Mesh::Graph>::edge_descriptor, bool>& b) -> bool {
-                               return a.second > b.second; // True (has unvisited LINE) comes before False
-                        });
-
-                    // Extract sorted TURN edges
-                    std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> sorted_turn_edges;
-                    for (const auto& pair : prioritized_turns) {
-                        sorted_turn_edges.push_back(pair.first);
-                    }
-
-                    // Separate TURN edges into preferred and non-preferred based on connected vertices
-                    std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> preferred_turns;
-                    std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> non_preferred_turns;
-
-                    for (const auto& edge : sorted_turn_edges) {
-                        boost::graph_traits<Mesh::Graph>::vertex_descriptor target_vertex = boost::target(edge, mesh_.graph_);
-                        bool has_unvisited_line = has_unvisited_line_edge(target_vertex, visited_swaths);
-                        if (has_unvisited_line) {
-                            std::cout << "Preferred TURN edge " << mesh_.graph_[edge].swath.uuid << "\n";
-                            preferred_turns.push_back(edge);
-                        } else {
-                            non_preferred_turns.push_back(edge);
+                    // Process TURN edges that lead to vertices with unvisited LINE edges
+                    for (const auto& pair : turn_edges_with_flag) {
+                        if (!pair.second) {
+                            continue;
                         }
-                    }
-
-                    // Traverse preferred TURN edges first
-                    for (const auto& edge : preferred_turns) {
+                        auto edge = pair.first;
                         const EdgeProperties& props = mesh_.graph_[edge];
-                        const std::string& swath_uuid = props.swath.uuid;
-
-                        // Determine the target vertex of the current TURN edge
                         boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(edge, mesh_.graph_);
 
-                        // Prevent immediate backtracking by skipping edges that lead back to the previous vertex
+                        // Prevent immediate backtracking
                         if (next_vertex == previous_vertex) {
-                            std::cout << "Skipping TURN edge " << swath_uuid << " to prevent immediate backtracking to vertex "
-                                      << previous_vertex << "\n";
                             continue;
                         }
 
-                        std::cout << "Traversing preferred TURN edge " << swath_uuid << "\n";
-
-                        // Add the TURN swath to the current path (do NOT mark as visited)
+                        // Add the TURN swath to the path
                         path.push_back(props.swath);
-                        // Recursively visit the next vertex
+
+                        // Recursive call
                         if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex)) {
-                            return true; // Path found, propagate the success signal
+                            return true;
                         }
-                        // Backtrack: Remove the TURN swath from the path
+
+                        // Backtrack
                         path.pop_back();
                     }
 
-                    // Traverse non-preferred TURN edges
-                    for (const auto& edge : non_preferred_turns) {
+                    // Process TURN edges that do not lead to unvisited LINE edges
+                    for (const auto& pair : turn_edges_with_flag) {
+                        if (pair.second) {
+                            continue;
+                        }
+                        auto edge = pair.first;
                         const EdgeProperties& props = mesh_.graph_[edge];
-                        const std::string& swath_uuid = props.swath.uuid;
-
-                        // Determine the target vertex of the current TURN edge
                         boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(edge, mesh_.graph_);
 
-                        // Prevent immediate backtracking by skipping edges that lead back to the previous vertex
+                        // Prevent immediate backtracking
                         if (next_vertex == previous_vertex) {
-                            std::cout << "Skipping TURN edge " << swath_uuid << " to prevent immediate backtracking to vertex "
-                                      << previous_vertex << "\n";
                             continue;
                         }
 
-                        std::cout << "Traversing non-preferred TURN edge " << swath_uuid << "\n";
-
-                        // Add the TURN swath to the current path (do NOT mark as visited)
+                        // Add the TURN swath to the path
                         path.push_back(props.swath);
-                        // Recursively visit the next vertex
+
+                        // Recursive call
                         if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex)) {
-                            return true; // Path found, propagate the success signal
+                            return true;
                         }
-                        // Backtrack: Remove the TURN swath from the path
+
+                        // Backtrack
                         path.pop_back();
                     }
+
+                    // No valid path found from this vertex
+                    return false;
                 }
-
-                return false; // No valid path found from this branch
-            }
-
             // Recursive function to find a path through the graph
             bool recursive_ex(
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor current_vertex,    // Current position in the graph
@@ -408,11 +355,14 @@ namespace farmtrax {
                     std::string swath_uuid = props.swath.uuid;  // Get the UUID of the swath associated with this edge
 
                     // Determine if the edge is a swath (of type LINE)
+                    Direction edge_direction = props.swath.direction;
                     SwathType edge_type = props.swath.type;
                     bool is_swath = (edge_type == SwathType::LINE);
+                    bool can_forward = (edge_direction == Direction::FORWARD);
 
-                    // If the edge is a swath and has already been visited, skip it
+                    // If the edge is a swath and has already been visited or is not in the correct direction, skip it
                     if (is_swath) {
+                        // if (!can_forward) {continue; }
                         if (visited_swaths.find(swath_uuid) != visited_swaths.end()) {
                             continue; // Skip this edge as it's already been traversed
                         }

@@ -68,13 +68,9 @@ namespace farmtrax {
             // Default constructor
             Mesh() = default;
 
-            // Constructor that initializes the route with swaths and builds the graph
-            Mesh(const Swaths& swaths){
-                swaths_ = swaths;
-            }
-
             // Function to build the mixed graph
-            void build_graph(bool weight_on_headlands = false) {
+            void build_graph(const Swaths& swaths,  bool weight_on_headlands = false) {
+                swaths_ = swaths;
                 // Clear any existing graph data
                 graph_ = Graph();
 

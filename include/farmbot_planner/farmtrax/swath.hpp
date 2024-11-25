@@ -170,6 +170,30 @@ namespace farmtrax {
                 return connecting_polygon_;
             }
 
+            // create a funtion that takes the generated swaths and divides them into nth goups
+            std::vector<Swaths> divide_swaths(int n) {
+                std::vector<Swaths> divided_swaths;
+                std::vector<Swath> swaths = get_swaths();
+                int num_swaths = swaths.size();
+                int num_swaths_per_group = num_swaths / n;
+                int remainder = num_swaths % n;
+                int start = 0;
+                int end = 0;
+                for (int i = 0; i < n; i++) {
+                    end = start + num_swaths_per_group;
+                    if (remainder > 0) {
+                        end++;
+                        remainder--;
+                    }
+                    std::vector<Swath> group_swaths(swaths.begin() + start, swaths.begin() + end);
+                    Swaths group_swaths_obj;
+                    group_swaths_obj.swaths_ = group_swaths;
+                    divided_swaths.push_back(group_swaths_obj);
+                    start = end;
+                }
+                return divided_swaths;
+            }
+
         private:
             // Helper function to generate swaths with a specified angle
             void generate_swaths(const Field& outer_field_, const Field& inner_field_, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
