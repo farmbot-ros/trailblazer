@@ -36,7 +36,6 @@ private:
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
-
     farmtrax::Mesh mesh_;
     farmtrax::Route route_;
 
@@ -108,21 +107,13 @@ private:
     }
 
     void runner() {
-        auto getfield = get_the_field();
-        if (getfield.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "No points found");
-            return;
-        }
-        auto field_in_enu = nav_to_enu(getfield);
-        if (field_in_enu.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "No ENU points received.");
-            return;
-        }
-        process_field(field_in_enu);
         planner_initialized_ = true;
-    }
+        std::vector<std::pair<double, double>> points = get_field();
+        if (points.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to get the field");
+            return;
+        }
 
-    void process_field(std::vector<std::pair<double, double>> points) {
         field_.gen_field(points);
         farmtrax::Field hl = field_.get_buffered(vehicle_width_ * 2.0, farmtrax::BufferType::SHRINK);
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
@@ -139,6 +130,25 @@ private:
         field_arrows_ = vector2ArrowsColor(route_.get_swaths());
         // segments_ = vector2Segments(swath_path);
         RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
+    }
+
+    std::vector<std::pair<double, double>> get_field(std::string geojson_file_path = "") {
+        std::vector<std::pair<double, double>> points;
+        auto request = std::make_shared<farmbot_interfaces::srv::GetTheField::Request>();
+        request->geojson_file = geojson_file_path;
+        while (!get_the_field_client_->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+                return {};
+            }
+            RCLCPP_INFO(this->get_logger(), "Service not available, waiting again...");
+        }
+        auto result = get_the_field_client_->async_send_request(request);
+        auto navpts = result.get()->points;
+        for (const auto& point : navpts) {
+            points.emplace_back(std::make_pair(point.x, point.y));
+        }
+        return points;
     }
 
     std::vector<std::vector<double>> get_the_field(std::string geojson_file_path = "") {
