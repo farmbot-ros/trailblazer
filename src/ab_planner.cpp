@@ -8,6 +8,7 @@
 #include "farmbot_planner/farmtrax/swath.hpp"
 #include "farmbot_planner/farmtrax/mesh.hpp"
 #include "farmbot_planner/farmtrax/route.hpp"
+#include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -44,7 +45,6 @@ private:
     geometry_msgs::msg::PolygonStamped inner_polygon_;
 
     rclcpp::TimerBase::SharedPtr visualization_timer_;
-
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
 
     rclcpp::TimerBase::SharedPtr on_timer_;
@@ -52,6 +52,7 @@ private:
     rclcpp::Publisher<farmbot_interfaces::msg::Segments>::SharedPtr segment_publisher_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr graphviz_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
 
@@ -73,6 +74,7 @@ public:
         inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/inner_field", 10);
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/outer_field", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
+        graphviz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/graph", 10);
 
         // Segment publisher
         segment_publisher_ = this->create_publisher<farmbot_interfaces::msg::Segments>("pln/segments", 10);
@@ -121,12 +123,13 @@ private:
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
-        // mesh_ = farmtrax::Mesh(swaths_);
         mesh_.build_graph(swaths_);
+        publish_graph(mesh_);
+        RCLCPP_INFO (this->get_logger(), "Graph generated");
 
         route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
         field_arrows_ = vector2ArrowsColor(route_.get_swaths());
-        // segments_ = vector2Segments(swath_path);
+        segments_ = vector2Segments(route_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
     }
 
@@ -224,6 +227,97 @@ private:
             markers.markers.push_back(arrow);
         }
         return markers;
+    }
+
+
+    void publish_graph(const farmtrax::Mesh& mesh) {
+        int id = 0;  // Unique ID for each marker
+        visualization_msgs::msg::MarkerArray marker_array;
+
+        // Publish vertices as spheres
+        auto vertices = boost::vertices(mesh.graph_);
+        for (auto vi = vertices.first; vi != vertices.second; ++vi) {
+            auto v = *vi;
+            const farmtrax::Point& p = mesh.graph_[v].point;
+
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = namespace_ + "/map";
+            marker.header.stamp = this->now();
+            marker.ns = "vertices";
+            marker.id = id++;
+            marker.type = visualization_msgs::msg::Marker::SPHERE;
+            marker.action = visualization_msgs::msg::Marker::ADD;
+
+            // Set the pose of the marker
+            marker.pose.position.x = p.x();
+            marker.pose.position.y = p.y();
+            marker.pose.position.z = 0.0;
+            marker.pose.orientation.w = 1.0;
+
+            // Set the scale of the marker
+            marker.scale.x = 2.0;
+            marker.scale.y = 2.0;
+            marker.scale.z = 2.0;
+
+            // Set the color (blue)
+            marker.color.r = 0.0f;
+            marker.color.g = 0.0f;
+            marker.color.b = 1.0f;
+            marker.color.a = 1.0f;
+
+            marker.lifetime = rclcpp::Duration(0, 0);  // Lasts forever
+
+            marker_array.markers.push_back(marker);
+        }
+
+        // Publish edges as lines
+        auto edges = boost::edges(mesh.graph_);
+        for (auto ei = edges.first; ei != edges.second; ++ei) {
+            auto e = *ei;
+            auto s = boost::source(e, mesh.graph_);
+            auto t = boost::target(e, mesh.graph_);
+
+            const farmtrax::Point& sp = mesh.graph_[s].point;
+            const farmtrax::Point& tp = mesh.graph_[t].point;
+
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = namespace_ + "/map";
+            marker.header.stamp = this->now();
+            marker.ns = "edges";
+            marker.id = id++;
+            marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+            marker.action = visualization_msgs::msg::Marker::ADD;
+
+            // Set the scale of the marker
+            marker.scale.x = 0.3;  // Line width
+
+            // Set the color (violet)
+            marker.color.r = 0.5f;
+            marker.color.g = 0.0f;
+            marker.color.b = 1.0f;
+            marker.color.a = 1.0f;
+
+            marker.lifetime = rclcpp::Duration(0, 0);  // Lasts forever
+
+            // Set the start and end points of the line
+            geometry_msgs::msg::Point start_point;
+            start_point.x = sp.x();
+            start_point.y = sp.y();
+            start_point.z = 0.0;
+
+            geometry_msgs::msg::Point end_point;
+            end_point.x = tp.x();
+            end_point.y = tp.y();
+            end_point.z = 0.0;
+
+            marker.points.push_back(start_point);
+            marker.points.push_back(end_point);
+
+            marker_array.markers.push_back(marker);
+        }
+
+        // Publish the entire marker array
+        graphviz_pub_->publish(marker_array);
     }
 };
 
