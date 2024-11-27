@@ -12,6 +12,9 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
+
+#include "rclcpp/rclcpp.hpp"
+
 #include <vector>
 #include <string>
 #include <map>
@@ -50,6 +53,7 @@ namespace farmtrax {
 
     class Mesh {
         private:
+            rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
             Swaths swaths_;
 
         public:
@@ -67,6 +71,10 @@ namespace farmtrax {
         public:
             // Default constructor
             Mesh() = default;
+
+            void pass_node(rclcpp::Node::SharedPtr node) {
+                node_ = node;
+            }
 
             // Function to build the mixed graph
             void build_graph(const Swaths& swaths,  bool weight_on_headlands = false) {

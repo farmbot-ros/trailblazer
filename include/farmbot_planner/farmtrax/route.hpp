@@ -4,19 +4,27 @@
 #include "farmbot_planner/farmtrax/swath.hpp"
 #include "mesh.hpp"
 #include <boost/graph/graph_traits.hpp>
+#include <rclcpp/visibility_control.hpp>
 #include <vector>
 #include <string>
 #include <unordered_set>
 #include <stack>
 #include <algorithm>
 #include <stdexcept>
+#include <algorithm>
 #include <limits>
 #include <cmath>
-#include <iostream> // For debug output
+#include <iostream>
+#include "spdlog/spdlog.h"
+
+namespace echo = spdlog;
+
+#include "rclcpp/rclcpp.hpp"
 
 namespace farmtrax {
     class Route {
         private:
+            rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
             Mesh mesh_;
             Point start_point_;
             Point end_point_;
@@ -36,7 +44,9 @@ namespace farmtrax {
             // Default constructor
             Route()  = default;
 
-
+            void pass_node(rclcpp::Node::SharedPtr node) {
+                node_ = node;
+            }
 
             // Method to set the initial and final points
             void set_points(const Point& start, const Point& end) {
@@ -184,26 +194,19 @@ namespace farmtrax {
                 //print the number of edges in the graph
                 std::cout << "Number of edges in the graph: " << boost::num_edges(mesh_.graph_) << "\n";
 
-                //for each vertice, print the number of edges that are connected to it (in and out) and type of swath
-                // for (boost::graph_traits<Mesh::Graph>::vertex_iterator vi = boost::vertices(mesh_.graph_).first; vi != boost::vertices(mesh_.graph_).second; ++vi) {
-                //     std::cout << "Vertex " << *vi << " has " << boost::in_degree(*vi, mesh_.graph_) << " incoming edges and " << boost::out_degree(*vi, mesh_.graph_) << " outgoing edges.\n";
-                //     for (boost::graph_traits<Mesh::Graph>::out_edge_iterator ei = boost::out_edges(*vi, mesh_.graph_).first; ei != boost::out_edges(*vi, mesh_.graph_).second; ++ei) {
-                //         const EdgeProperties& props = mesh_.graph_[*ei];
-                //         std::cout << "Edge " << *ei << " connected to vertex " << *vi << " is of type " << props.swath.type << "\n";
-                //     }
-                // }
-
                 // Initialize an invalid vertex descriptor to track the previous vertex (no previous vertex initially)
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor invalid_vertex = boost::graph_traits<Mesh::Graph>::null_vertex();
 
                 // Start the recursive exhaustive search from the start_vertex
+                int depth = 0;
                 auto found = recursive_ex(
                     start_vertex,       // Current vertex
                     end_vertex,         // Destination vertex
                     visited_swaths,    // Set of visited swaths
                     path,               // Current path
                     total_swaths,      // Total number of swaths to visit
-                    invalid_vertex     // Previous vertex (none at the start)
+                    invalid_vertex,     // Previous vertex (none at the start)
+                    depth               // Depth of the search tree
                 );
 
                 if (found) {
@@ -214,18 +217,22 @@ namespace farmtrax {
                 }
             }
 
-            bool recursive_ex2(
+            bool recursive_ex(
                     boost::graph_traits<Mesh::Graph>::vertex_descriptor current_vertex,
                     boost::graph_traits<Mesh::Graph>::vertex_descriptor end_vertex,
                     std::unordered_set<std::string>& visited_swaths,
                     std::vector<Swath>& path,
                     size_t total_swaths,
-                    boost::graph_traits<Mesh::Graph>::vertex_descriptor previous_vertex
+                    boost::graph_traits<Mesh::Graph>::vertex_descriptor previous_vertex,
+                    int& depth                                                             // Depth of the recursion
                 ) {
                     // Base Case: If current vertex is the end vertex and all LINE swaths have been visited
                     if (visited_swaths.size() == total_swaths && current_vertex == end_vertex) {
                         return true; // Valid path found
                     }
+
+                    depth++;
+                    echo::debug("Depth: {}", depth);
 
                     // Retrieve all outgoing edges from the current vertex
                     boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
@@ -267,10 +274,9 @@ namespace farmtrax {
                         path.push_back(props.swath);
 
                         // Recursive call
-                        if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex)) {
+                        if (recursive_ex(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex, depth)) {
                             return true;
                         }
-
                         // Backtrack
                         visited_swaths.erase(swath_uuid);
                         path.pop_back();
@@ -294,7 +300,7 @@ namespace farmtrax {
                         path.push_back(props.swath);
 
                         // Recursive call
-                        if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex)) {
+                        if (recursive_ex(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex, depth)) {
                             return true;
                         }
 
@@ -317,10 +323,11 @@ namespace farmtrax {
                         }
 
                         // Add the TURN swath to the path
+                        props.swath.reverse();
                         path.push_back(props.swath);
 
                         // Recursive call
-                        if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex)) {
+                        if (recursive_ex(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex, depth)) {
                             return true;
                         }
 
@@ -328,85 +335,88 @@ namespace farmtrax {
                         path.pop_back();
                     }
 
+                    depth--;
                     // No valid path found from this vertex
                     return false;
                 }
+
             // Recursive function to find a path through the graph
-            bool recursive_ex(
+            bool recursive_ex2(
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor current_vertex,    // Current position in the graph
                 boost::graph_traits<Mesh::Graph>::vertex_descriptor end_vertex,        // Destination vertex
                 std::unordered_set<std::string>& visited_swaths,                       // Set of already visited swaths
                 std::vector<Swath>& path,                                              // Current path as a sequence of Swath objects
                 size_t total_swaths,                                                   // Total number of swaths to visit
-                boost::graph_traits<Mesh::Graph>::vertex_descriptor previous_vertex    // Previously visited vertex to prevent immediate backtracking
+                boost::graph_traits<Mesh::Graph>::vertex_descriptor previous_vertex,   // Previously visited vertex to prevent immediate backtracking
+                int depth                                                             // Depth of the recursion
             ) {
-                // Base Case: If current vertex is the end vertex and all swaths have been visited
-                if (current_vertex == end_vertex && visited_swaths.size() == total_swaths) {
-                    return true; // Path successfully found
-                }
+                // Base Case: If all swaths have been visited return true
+                if (visited_swaths.size() == total_swaths) { return true; }
 
-                std::vector<Swath> new_path;
+                echo::info("Depth: {}", depth++);
 
-                // Iterate over all outgoing edges from the current_vertex
-                boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
-                for (boost::tie(ei, ei_end) = boost::out_edges(current_vertex, mesh_.graph_); ei != ei_end; ++ei) {
-                    auto edge = *ei;
-                    const EdgeProperties& props = mesh_.graph_[edge]; // Retrieve properties of the edge
-                    std::string swath_uuid = props.swath.uuid;  // Get the UUID of the swath associated with this edge
-
-                    // Determine if the edge is a swath (of type LINE)
-                    Direction edge_direction = props.swath.direction;
-                    SwathType edge_type = props.swath.type;
-                    bool is_swath = (edge_type == SwathType::LINE);
-                    bool can_forward = (edge_direction == Direction::FORWARD);
-
-                    // If the edge is a swath and has already been visited or is not in the correct direction, skip it
-                    if (is_swath) {
-                        // if (!can_forward) {continue; }
-                        if (visited_swaths.find(swath_uuid) != visited_swaths.end()) {
-                            continue; // Skip this edge as it's already been traversed
-                        }
-                    }
-
-                    // Identify the target vertex of the edge
-                    auto target_vertex = boost::target(edge, mesh_.graph_);
-
-                    // Prevent immediate backtracking to the previous vertex via a non-swath edge (e.g., a turn)
-                    if (!is_swath && target_vertex == previous_vertex) {
-                        continue; // Skip to avoid redundant traversal
-                    }
-
-                    // Choose to traverse this edge
-                    if (is_swath) {
-                        // Mark the swath as visited and add it to the current path
-                        visited_swaths.insert(swath_uuid);
-                        new_path.push_back(props.swath); // Add Swath object directly
+                boost::graph_traits<Mesh::Graph>::out_edge_iterator ei2, ei_end2;
+                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> line_edges;
+                std::vector<std::pair<boost::graph_traits<Mesh::Graph>::edge_descriptor, bool>> turn_edges_with_flag;
+                for (boost::tie(ei2, ei_end2) = boost::out_edges(current_vertex, mesh_.graph_); ei2 != ei_end2; ++ei2) {
+                    auto edge = *ei2;
+                    const EdgeProperties& props = mesh_.graph_[edge];
+                    if (props.swath.type == SwathType::LINE) {
+                        line_edges.push_back(edge);
                     } else {
-                        // For non-swath edges (e.g., turns), simply log the traversal
-                        // new_path.push_back(props.swath); // Add Swath object directly
+                        boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(edge, mesh_.graph_);
+                        bool has_unvisited_line = has_unvisited_line_edge(next_vertex, visited_swaths);
+                        turn_edges_with_flag.emplace_back(edge, has_unvisited_line);
                     }
-
-                    // Recurse with the updated current vertex and previous vertex
-                    bool found = recursive_ex(
-                        target_vertex,      // Move to the target vertex
-                        end_vertex,         // Destination remains the same
-                        visited_swaths,    // Updated set of visited swaths
-                        new_path,               // Updated path
-                        total_swaths,      // Total swaths to visit
-                        current_vertex      // Current vertex becomes the previous vertex for the next recursion
-                    );
-
-                    if (found) {
-                        path.insert(path.end(), new_path.begin(), new_path.end());
-                        return true; // Propagate the success up the recursion stack
-                    }
-
-                    // Backtrack: If the path wasn't successful, undo the traversal
-                    if (is_swath) {
-                        visited_swaths.erase(swath_uuid); // Unmark the swath as visited
-                    }
-                    path.pop_back();                   // Remove the swath from the current path
                 }
+
+                for (const auto& edge : line_edges) {
+                    const EdgeProperties& props = mesh_.graph_[edge];
+                    boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(edge, mesh_.graph_);
+                    const std::string& swath_uuid = props.swath.uuid;
+                    bool is_forward = props.swath.direction == Direction::FORWARD;
+                    // Prevent immediate backtracking
+                    if (
+                        (next_vertex == previous_vertex) ||
+                        (visited_swaths.find(swath_uuid) != visited_swaths.end()) ||
+                        (!is_forward)
+                    ) { continue; }
+
+                    path.push_back(props.swath);
+                    visited_swaths.insert(swath_uuid);
+                    if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex, depth)) {
+                        return true;
+                    }
+                    path.pop_back();
+                    visited_swaths.erase(swath_uuid);
+                }
+
+                // Partition the vector
+                std::stable_partition(
+                    turn_edges_with_flag.begin(), turn_edges_with_flag.end(),
+                    [](const std::pair<boost::graph_traits<Mesh::Graph>::edge_descriptor, bool>& element) {
+                        return element.second == true;
+                    }
+                );
+
+                for (const auto& pair : turn_edges_with_flag) {
+                    const EdgeProperties& props = mesh_.graph_[pair.first];
+                    boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(pair.first, mesh_.graph_);
+                    const std::string& swath_uuid = props.swath.uuid;
+                    bool is_forward = props.swath.direction == Direction::FORWARD;
+                    if (
+                        (next_vertex == previous_vertex) ||
+                        (!is_forward)
+                    ) { continue; }
+                    path.push_back(props.swath);
+                    if (recursive_ex2(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex, depth)) {
+                        return true;
+                    }
+                    path.pop_back();
+                }
+
+                //backtrack
+                echo::info("Depth: {}", depth--);
 
                 return false; // No valid path found from this vertex
             }

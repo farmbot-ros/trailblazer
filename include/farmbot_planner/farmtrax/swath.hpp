@@ -15,6 +15,8 @@
 #include <boost/uuid/uuid_generators.hpp> // generators
 #include <boost/uuid/uuid_io.hpp>         // streaming operators etc.
 
+#include "rclcpp/rclcpp.hpp"
+
 #include <vector>
 #include <string>
 #include <cmath>
@@ -90,6 +92,7 @@ namespace farmtrax {
 
     class Swaths {
         private:
+            rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
             std::vector<Swath> swaths_;             // Holds Swath structs
             Rtree swath_rtree_;                     // R-tree for efficient spatial querying of swaths
             std::vector<Swath> with_headland_;      // Holds Swath structs with turns
@@ -101,6 +104,10 @@ namespace farmtrax {
             // Constructor to initialize with a field and swath width
             Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
                 gen_swaths(outer_field, inner_field, swath_width, angle_degrees, alternate_freq, inner_offset);
+            }
+
+            void pass_node(rclcpp::Node::SharedPtr node) {
+                node_ = node;
             }
 
             void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
@@ -188,6 +195,7 @@ namespace farmtrax {
                     std::vector<Swath> group_swaths(swaths.begin() + start, swaths.begin() + end);
                     Swaths group_swaths_obj;
                     group_swaths_obj.swaths_ = group_swaths;
+                    group_swaths_obj.pass_node(node_);
                     divided_swaths.push_back(group_swaths_obj);
                     start = end;
                 }

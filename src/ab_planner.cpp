@@ -1,4 +1,5 @@
 #include <memory>
+#include <rclcpp/logging.hpp>
 #include <vector>
 #include <string>
 #include <utility>
@@ -43,6 +44,7 @@ private:
     visualization_msgs::msg::MarkerArray field_arrows_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
+    visualization_msgs::msg::MarkerArray graph_markers_;
 
     rclcpp::TimerBase::SharedPtr visualization_timer_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
@@ -62,7 +64,7 @@ public:
             .allow_undeclared_parameters(true)
             .automatically_declare_parameters_from_overrides(true)
         ) {
-        vehicle_width_ = this->get_parameter_or<double>("vehicle_width", 0.5);
+        vehicle_width_ = this->get_parameter_or<double>("vehicle_width", 2.0);
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
         alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
@@ -93,12 +95,20 @@ public:
         std::thread([this] { runner(); }).detach();
     }
 
+    void init() {
+        swaths_.pass_node(this->shared_from_this());
+        route_.pass_node(this->shared_from_this());
+        field_.pass_node(this->shared_from_this());
+        mesh_.pass_node(this->shared_from_this());
+    }
+
 private:
     void on_service_start_timer() {
         if (!planner_initialized_) { return; }
         outer_polygon_publisher_->publish(outer_polygon_);
         inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
+        graphviz_pub_->publish(graph_markers_);
     }
 
     void on_timer() {
@@ -116,15 +126,15 @@ private:
 
         field_.gen_field(points);
         farmtrax::Field hl = field_.get_buffered(vehicle_width_ * 2.0, farmtrax::BufferType::SHRINK);
-        RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
-
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         inner_polygon_ = vector2Polygon(hl.get_border_points());
+        RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
+
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
         mesh_.build_graph(swaths_);
-        publish_graph(mesh_);
+        graph_markers_ =  graph2Markers(mesh_);
         RCLCPP_INFO (this->get_logger(), "Graph generated");
 
         route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
@@ -230,7 +240,7 @@ private:
     }
 
 
-    void publish_graph(const farmtrax::Mesh& mesh) {
+    visualization_msgs::msg::MarkerArray graph2Markers(const farmtrax::Mesh& mesh) {
         int id = 0;  // Unique ID for each marker
         visualization_msgs::msg::MarkerArray marker_array;
 
@@ -317,7 +327,7 @@ private:
         }
 
         // Publish the entire marker array
-        graphviz_pub_->publish(marker_array);
+        return marker_array;
     }
 };
 
@@ -325,6 +335,7 @@ int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
     rclcpp::executors::MultiThreadedExecutor executor;
     auto node = std::make_shared<FieldProcessorNode>();
+    node->init();
     try {
         executor.add_node(node);
         executor.spin();

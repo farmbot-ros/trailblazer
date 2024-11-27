@@ -76,7 +76,7 @@ find_package(Eigen3 REQUIRED)
 include_directories(${Eigen_INCLUDE_DIRS})
 link_directories(${Eigen_LIBRARY_DIRS})
 add_definitions(${Eigen_DEFINITIONS})
-find_package(fmt REQUIRED)
+find_package(spdlog REQUIRED)
 find_package(PCL REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
@@ -87,7 +87,7 @@ find_package(CURL REQUIRED)
 
 
 set(dependencies_sys
-    fmt::fmt
+    spdlog::spdlog
     ${Boost_LIBRARIES}
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}

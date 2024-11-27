@@ -12,9 +12,13 @@ from launch.actions import OpaqueFunction
 
 def launch_setup(context, *args, **kwargs):
     namespace = LaunchConfiguration('namespace').perform(context)
+    path_angle = LaunchConfiguration('path_angle').perform(context)
+    alternate_freq = LaunchConfiguration('alternate_freq').perform(context)
     param_file = os.path.join(get_package_share_directory('farmbot_planner'), 'config', 'params.yaml')
 
     nodes_array = []
+
+    print(alternate_freq)
 
     ab_planner = Node(
         package='farmbot_planner',
@@ -23,10 +27,12 @@ def launch_setup(context, *args, **kwargs):
         namespace=namespace,
         parameters=[
             yaml.safe_load(open(param_file))['ab_planner']['ros__parameters'],
-            yaml.safe_load(open(param_file))['global']['ros__parameters']
+            yaml.safe_load(open(param_file))['global']['ros__parameters'],
+            {'path_angle': path_angle} if path_angle != '' else {},
+            {'alternate_freq': alternate_freq} if alternate_freq != '' else {}
         ]
     )
-    nodes_array.append(ab_planner)
+    # nodes_array.append(ab_planner)
 
     goto_field = Node(
         package='farmbot_planner',
@@ -69,9 +75,13 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     namespace_arg = DeclareLaunchArgument('namespace', default_value='fbot')
+    path_angle = DeclareLaunchArgument('path_angle', default_value='')
+    alternate_freq = DeclareLaunchArgument('alternate_freq', default_value='')
 
     return LaunchDescription([
             namespace_arg,
+            path_angle,
+            alternate_freq,
             OpaqueFunction(function = launch_setup)
         ]
     )
