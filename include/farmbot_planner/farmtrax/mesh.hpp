@@ -126,17 +126,7 @@ namespace farmtrax {
                     if (!edge_exists_between_vertices(start_vertex, end_vertex)) {
                         double weight = (swath.type == SwathType::LINE) ? (weight_on_headlands ? 1.0 : 0.0) : (weight_on_headlands ? 0.0 : 1.0);
                         EdgeProperties props(swath, weight);
-
-                        // Add edge(s) based on swath type
-                        if (swath.type == SwathType::LINE) {
-                            // Swaths are directed edges
-                            boost::add_edge(start_vertex, end_vertex, props, graph_);
-                        } else {
-                            // Headlands are undirected edges (add two directed edges)
-                            EdgeProperties props_reverse(swath.reverse(), weight);
-                            boost::add_edge(start_vertex, end_vertex, props, graph_);
-                            boost::add_edge(end_vertex, start_vertex, props_reverse, graph_);
-                        }
+                        boost::add_edge(start_vertex, end_vertex, props, graph_);
                     }
                 }
 

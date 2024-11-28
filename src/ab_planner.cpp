@@ -1,4 +1,5 @@
 #include <memory>
+#include <nav_msgs/msg/detail/path__struct.hpp>
 #include <rclcpp/logging.hpp>
 #include <vector>
 #include <string>
@@ -16,6 +17,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/polygon_stamped.hpp"
 #include "geometry_msgs/msg/point32.hpp"
+#include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_interfaces/srv/get_the_field.hpp"
@@ -41,10 +43,11 @@ private:
     farmtrax::Mesh mesh_;
     farmtrax::Route route_;
 
-    visualization_msgs::msg::MarkerArray field_arrows_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
+    visualization_msgs::msg::MarkerArray field_arrows_;
     visualization_msgs::msg::MarkerArray graph_markers_;
+    nav_msgs::msg::Path path_;
 
     rclcpp::TimerBase::SharedPtr visualization_timer_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
@@ -57,6 +60,7 @@ private:
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr graphviz_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
 public:
     FieldProcessorNode() : Node("ab_planner",
@@ -77,6 +81,7 @@ public:
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/outer_field", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
         graphviz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/graph", 10);
+        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("pln/path", 10);
 
         // Segment publisher
         segment_publisher_ = this->create_publisher<farmbot_interfaces::msg::Segments>("pln/segments", 10);
@@ -109,6 +114,7 @@ private:
         inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
         graphviz_pub_->publish(graph_markers_);
+        path_publisher_->publish(path_);
     }
 
     void on_timer() {
@@ -138,8 +144,9 @@ private:
         graph_markers_ =  graph2Markers(mesh_);
         RCLCPP_INFO (this->get_logger(), "Graph generated");
 
-        // route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
-        // segments_ = vector2Segments(route_.get_swaths());
+        route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
+        path_ = vector2Path(route_.get_swaths());
+        segments_ = vector2Segments(route_.get_swaths());
         // RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
     }
 
@@ -237,6 +244,22 @@ private:
             markers.markers.push_back(arrow);
         }
         return markers;
+    }
+
+
+    nav_msgs::msg::Path vector2Path(const std::vector<farmtrax::Swath>& swaths) {
+        nav_msgs::msg::Path path;
+        path.header.frame_id = "map";
+        path.header.stamp = rclcpp::Clock().now();
+        for (const auto& swath : swaths) {
+            for (const auto& point : swath.swath) {
+                geometry_msgs::msg::PoseStamped pose;
+                pose.pose.position.x = point.x();
+                pose.pose.position.y = point.y();
+                path.poses.push_back(pose);
+            }
+        }
+        return path;
     }
 
 
