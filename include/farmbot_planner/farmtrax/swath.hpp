@@ -23,6 +23,8 @@
 #include <map>
 #include <queue>
 #include <utility> // For std::pair
+#include "spdlog/spdlog.h"
+namespace echo = spdlog;
 
 namespace farmtrax {
     namespace bg = boost::geometry;
@@ -95,7 +97,6 @@ namespace farmtrax {
             rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
             std::vector<Swath> swaths_;             // Holds Swath structs
             Rtree swath_rtree_;                     // R-tree for efficient spatial querying of swaths
-            std::vector<Swath> with_headland_;      // Holds Swath structs with turns
             Polygon connecting_polygon_;            // Polygon to represent the connecting swath
 
         public:
@@ -117,11 +118,6 @@ namespace farmtrax {
             // Get the swaths as a vector of Swath structs
             const std::vector<Swath>& get_swaths() const {
                 return swaths_;
-            }
-
-            // Get the swaths with headlands as a vector of Swath structs
-            const std::vector<Swath>& get_swaths_with_headland() const {
-                return with_headland_;
             }
 
             // Add a swath to the list of swaths
@@ -266,17 +262,6 @@ namespace farmtrax {
                         boost::geometry::envelope(segment, swath_box);
                         swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                     }
-                }
-                connecting_polygon_ = new_polygon;
-                with_headland_ = swaths_;
-                for (long unsigned int i = 0; i < connecting_polygon_.outer().size(); i++) {
-                    Swath swath;
-                    swath.swath = create_connection(connecting_polygon_.outer()[i], connecting_polygon_.outer()[(i + 1) % connecting_polygon_.outer().size()]);
-                    swath.uuid = generate_UUID();
-                    swath.type = SwathType::TURN;
-                    swath.length = bg::distance(connecting_polygon_.outer()[i], connecting_polygon_.outer()[(i + 1) % connecting_polygon_.outer().size()]);
-                    swath.direction = Direction::ANY;
-                    with_headland_.push_back(swath);
                 }
             }
 

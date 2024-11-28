@@ -137,10 +137,10 @@ private:
         graph_markers_ =  graph2Markers(mesh_);
         RCLCPP_INFO (this->get_logger(), "Graph generated");
 
-        route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
-        field_arrows_ = vector2ArrowsColor(route_.get_swaths());
-        segments_ = vector2Segments(route_.get_swaths());
-        RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
+        // route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
+        // field_arrows_ = vector2ArrowsColor(route_.get_swaths());
+        // segments_ = vector2Segments(route_.get_swaths());
+        // RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
     }
 
     std::vector<std::pair<double, double>> get_field(std::string geojson_file_path = "") {
