@@ -78,8 +78,7 @@ namespace farmtrax {
                 node_ = node;
             }
 
-            // Function to build the mixed graph
-            void build_graph(const Swaths& swaths,  bool weight_on_headlands = false) {
+            void build_graph(const Swaths& swaths, bool weight_on_headlands = false) {
                 swaths_ = swaths;
                 // Clear any existing graph data
                 graph_ = Graph();
@@ -107,7 +106,15 @@ namespace farmtrax {
                     }
                 };
 
-                // Iterate over all swaths and headlands
+                // Lambda to check if an edge exists between two vertices
+                auto edge_exists_between_vertices = [&](boost::graph_traits<Graph>::vertex_descriptor v1, boost::graph_traits<Graph>::vertex_descriptor v2) -> bool {
+                    boost::graph_traits<Graph>::edge_descriptor e;
+                    bool exists;
+                    boost::tie(e, exists) = boost::edge(v1, v2, graph_);
+                    return exists;
+                };
+
+                // First, add edges for each swath from its start to end point
                 for (const auto& swath : swaths_.get_swaths()) {
                     const Point& start_point = swath.swath.front();
                     const Point& end_point = swath.swath.back();
@@ -115,24 +122,55 @@ namespace farmtrax {
                     boost::graph_traits<Graph>::vertex_descriptor start_vertex = get_or_create_vertex(start_point);
                     boost::graph_traits<Graph>::vertex_descriptor end_vertex = get_or_create_vertex(end_point);
 
-                    // if (swath.type == SwathType::LINE) {
-                    //     // Swaths are directed edges
-                    //     EdgeProperties props(swath, weight_on_headlands ? 1.0 : 0.0);
+                    // Check if edge already exists between start_vertex and end_vertex
+                    if (!edge_exists_between_vertices(start_vertex, end_vertex)) {
+                        double weight = (swath.type == SwathType::LINE) ? (weight_on_headlands ? 1.0 : 0.0) : (weight_on_headlands ? 0.0 : 1.0);
+                        EdgeProperties props(swath, weight);
 
-                    //     boost::graph_traits<Graph>::edge_descriptor e;
-                    //     bool inserted;
-                    //     boost::tie(e, inserted) = boost::add_edge(start_vertex, end_vertex, props, graph_);
-                    // }
-                    // else {
-                    //     // Headlands are undirected edges (add two directed edges)
-                    //     EdgeProperties props_forward(swath, weight_on_headlands ? 0.0 : 1.0);
-                    //     EdgeProperties props_reverse(swath.reverse(), weight_on_headlands ? 0.0 : 1.0);
+                        // Add edge(s) based on swath type
+                        if (swath.type == SwathType::LINE) {
+                            // Swaths are directed edges
+                            boost::add_edge(start_vertex, end_vertex, props, graph_);
+                        } else {
+                            // Headlands are undirected edges (add two directed edges)
+                            EdgeProperties props_reverse(swath.reverse(), weight);
+                            boost::add_edge(start_vertex, end_vertex, props, graph_);
+                            boost::add_edge(end_vertex, start_vertex, props_reverse, graph_);
+                        }
+                    }
+                }
 
-                    //     boost::graph_traits<Graph>::edge_descriptor e1, e2;
-                    //     bool inserted1, inserted2;
-                    //     boost::tie(e1, inserted1) = boost::add_edge(start_vertex, end_vertex, props_forward, graph_);
-                    //     boost::tie(e2, inserted2) = boost::add_edge(end_vertex, start_vertex, props_reverse, graph_);
-                    // }
+                // Now, connect each swath's end to every other swath's start (excluding itself)
+                const auto& swaths_list = swaths_.get_swaths();
+                for (const auto& swath_i : swaths_list) {
+                    const Point& end_point_i = swath_i.swath.back();
+                    boost::graph_traits<Graph>::vertex_descriptor end_vertex_i = get_or_create_vertex(end_point_i);
+
+                    for (const auto& swath_j : swaths_list) {
+                        if (swath_i.uuid == swath_j.uuid) {
+                            continue; // Skip if it's the same swath
+                        }
+                        const Point& start_point_j = swath_j.swath.front();
+                        boost::graph_traits<Graph>::vertex_descriptor start_vertex_j = get_or_create_vertex(start_point_j);
+
+                        // Check if edge from end_vertex_i to start_vertex_j already exists
+                        if (!edge_exists_between_vertices(end_vertex_i, start_vertex_j)) {
+                            // Calculate weight (e.g., Euclidean distance between end_point_i and start_point_j)
+                            double weight = bg::distance(end_point_i, start_point_j);
+
+                            // Create a connection swath representing the turn (from end of swath_i to start of swath_j)
+                            Swath connection_swath;
+                            connection_swath.type = SwathType::TURN; // Assuming TURN is the type for these connections
+                            connection_swath.swath.push_back(end_point_i);
+                            connection_swath.swath.push_back(start_point_j);
+                            connection_swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
+
+                            EdgeProperties props(connection_swath, weight);
+
+                            // Add the edge
+                            boost::add_edge(end_vertex_i, start_vertex_j, props, graph_);
+                        }
+                    }
                 }
             }
 

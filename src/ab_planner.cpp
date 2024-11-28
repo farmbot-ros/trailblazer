@@ -131,6 +131,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
+        field_arrows_ = vector2ArrowsColor(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
         mesh_.build_graph(swaths_);
@@ -138,7 +139,6 @@ private:
         RCLCPP_INFO (this->get_logger(), "Graph generated");
 
         // route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
-        // field_arrows_ = vector2ArrowsColor(route_.get_swaths());
         // segments_ = vector2Segments(route_.get_swaths());
         // RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
     }
@@ -265,9 +265,9 @@ private:
             marker.pose.orientation.w = 1.0;
 
             // Set the scale of the marker
-            marker.scale.x = 2.0;
-            marker.scale.y = 2.0;
-            marker.scale.z = 2.0;
+            marker.scale.x = 1.0;
+            marker.scale.y = 1.0;
+            marker.scale.z = 1.0;
 
             // Set the color (blue)
             marker.color.r = 0.0f;
@@ -299,7 +299,7 @@ private:
             marker.action = visualization_msgs::msg::Marker::ADD;
 
             // Set the scale of the marker
-            marker.scale.x = 0.1;  // Line width
+            marker.scale.x = 0.01;  // Line width
 
             // Set the color (violet)
             marker.color.r = 0.5f;
