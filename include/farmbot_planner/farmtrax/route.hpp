@@ -1,5 +1,5 @@
-#ifndef PATH_HPP
-#define PATH_HPP
+#ifndef ROUTE_HPP
+#define ROUTE_HPP
 
 #include "farmbot_planner/farmtrax/swath.hpp"
 #include "mesh.hpp"
@@ -434,4 +434,4 @@ namespace farmtrax {
     };
 } // namespace farmtrax
 
-#endif // PATH_HPP
+#endif // ROUTE_HPP

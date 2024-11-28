@@ -299,7 +299,7 @@ private:
             marker.action = visualization_msgs::msg::Marker::ADD;
 
             // Set the scale of the marker
-            marker.scale.x = 0.3;  // Line width
+            marker.scale.x = 0.1;  // Line width
 
             // Set the color (violet)
             marker.color.r = 0.5f;
