@@ -111,88 +111,7 @@ namespace farmtrax {
                     }
                     case Algorithm::EXHAUSTIVE_SEARCH: {
                         echo::info("Starting exhaustive search...");
-
-                        // Function to find the vertex descriptor corresponding to a point
-                        auto find_vertex_by_point = [&](const Point& p) -> boost::graph_traits<Mesh::Graph>::vertex_descriptor {
-                            boost::graph_traits<Mesh::Graph>::vertex_iterator vi, vi_end;
-                            for (boost::tie(vi, vi_end) = boost::vertices(mesh_.graph_); vi != vi_end; ++vi) {
-                                if (bg::equals(mesh_.graph_[*vi].point, p)) {
-                                    return *vi;
-                                }
-                            }
-                            return boost::graph_traits<Mesh::Graph>::null_vertex();
-                        };
-
-                        // Find start and end vertices
-                        boost::graph_traits<Mesh::Graph>::vertex_descriptor start_vertex = find_vertex_by_point(start_point_);
-                        boost::graph_traits<Mesh::Graph>::vertex_descriptor end_vertex = find_vertex_by_point(end_point_);
-
-                        if (start_vertex == boost::graph_traits<Mesh::Graph>::null_vertex()) {
-                            throw std::runtime_error("Start point not found in mesh graph.");
-                        }
-                        if (end_vertex == boost::graph_traits<Mesh::Graph>::null_vertex()) {
-                            throw std::runtime_error("End point not found in mesh graph.");
-                        }
-
-                        // Variables to store the minimal path
-                        double min_total_weight = std::numeric_limits<double>::infinity();
-                        std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> min_path_edges;
-
-                        // Recursive function to find all paths
-                        std::function<void(boost::graph_traits<Mesh::Graph>::vertex_descriptor,
-                                           std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor>&,
-                                           double,
-                                           std::unordered_set<boost::graph_traits<Mesh::Graph>::vertex_descriptor>&)> find_paths;
-
-                        find_paths = [&](boost::graph_traits<Mesh::Graph>::vertex_descriptor current,
-                                         std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor>& path,
-                                         double total_weight,
-                                         std::unordered_set<boost::graph_traits<Mesh::Graph>::vertex_descriptor>& visited) {
-                            if (current == end_vertex) {
-                                if (total_weight < min_total_weight) {
-                                    min_total_weight = total_weight;
-                                    min_path_edges = path;
-                                }
-                                return;
-                            }
-
-                            visited.insert(current);
-
-                            boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
-                            for (boost::tie(ei, ei_end) = boost::out_edges(current, mesh_.graph_); ei != ei_end; ++ei) {
-                                boost::graph_traits<Mesh::Graph>::edge_descriptor e = *ei;
-                                boost::graph_traits<Mesh::Graph>::vertex_descriptor target_v = boost::target(e, mesh_.graph_);
-                                if (visited.find(target_v) == visited.end()) {
-                                    // Avoid cycles
-                                    path.push_back(e);
-                                    double edge_weight = mesh_.graph_[e].weight;
-                                    total_weight += edge_weight;
-                                    find_paths(target_v, path, total_weight, visited);
-                                    total_weight -= edge_weight;
-                                    path.pop_back();
-                                }
-                            }
-                            visited.erase(current);
-                        };
-
-                        // Start the search
-                        std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> path;
-                        std::unordered_set<boost::graph_traits<Mesh::Graph>::vertex_descriptor> visited;
-
-                        find_paths(start_vertex, path, 0.0, visited);
-
-                        if (min_path_edges.empty()) {
-                            echo::error("No path found from start to end.");
-                            swaths.clear();
-                        } else {
-                            // Build the swaths vector from min_path_edges
-                            swaths.clear();
-                            for (const auto& e : min_path_edges) {
-                                swaths.push_back(mesh_.graph_[e].swath);
-                            }
-                            echo::info("Optimal path found with total weight: {}", min_total_weight);
-                        }
-
+                        execute_exhaustive_search();
                         break;
                     }
                     default:
@@ -221,6 +140,105 @@ namespace farmtrax {
                 return path_str;
             }
 
+            void execute_exhaustive_search() {
+                // Function to find the vertex descriptor corresponding to a point
+                auto find_vertex_by_point = [&](const Point& p) -> boost::graph_traits<Mesh::Graph>::vertex_descriptor {
+                    boost::graph_traits<Mesh::Graph>::vertex_iterator vi, vi_end;
+                    double min_distance = std::numeric_limits<double>::infinity();
+                    boost::graph_traits<Mesh::Graph>::vertex_descriptor closest_vertex = boost::graph_traits<Mesh::Graph>::null_vertex();
+
+                    for (boost::tie(vi, vi_end) = boost::vertices(mesh_.graph_); vi != vi_end; ++vi) {
+                        double dist = bg::distance(mesh_.graph_[*vi].point, p);
+                        if (dist < min_distance) {
+                            min_distance = dist;
+                            closest_vertex = *vi;
+                        }
+                    }
+
+                    // Define a tolerance for considering two points as the same
+                    const double tolerance = 1e-6;
+                    if (min_distance < tolerance) {
+                        return closest_vertex;
+                    } else {
+                        return boost::graph_traits<Mesh::Graph>::null_vertex();
+                    }
+                };
+
+                // Find start and end vertices
+                auto start_vertex = find_vertex_by_point(start_point_);
+                auto end_vertex = find_vertex_by_point(end_point_);
+
+                // Variables to store the minimal path
+                double min_total_weight = std::numeric_limits<double>::infinity();
+                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> min_path_edges;
+
+                // Recursive function to find all paths
+                std::function<void(boost::graph_traits<Mesh::Graph>::vertex_descriptor,
+                                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor>&,
+                                double,
+                                std::unordered_set<boost::graph_traits<Mesh::Graph>::vertex_descriptor>&)> find_paths;
+
+                find_paths = [&](boost::graph_traits<Mesh::Graph>::vertex_descriptor current,
+                                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor>& path,
+                                double total_weight,
+                                std::unordered_set<boost::graph_traits<Mesh::Graph>::vertex_descriptor>& visited) {
+                    // Add current vertex to visited
+                    visited.insert(current);
+
+                    // Check if we've reached the end vertex
+                    if (current == end_vertex) {
+                        if (total_weight < min_total_weight) {
+                            min_total_weight = total_weight;
+                            min_path_edges = path;
+                        }
+                        // Remove current vertex from visited before returning
+                        visited.erase(current);
+                        return;
+                    }
+
+                    // Iterate over all outgoing edges from the current vertex
+                    boost::graph_traits<Mesh::Graph>::out_edge_iterator ei, ei_end;
+                    for (boost::tie(ei, ei_end) = boost::out_edges(current, mesh_.graph_); ei != ei_end; ++ei) {
+                        auto e = *ei;
+                        auto target_v = boost::target(e, mesh_.graph_);
+
+                        // Avoid cycles by checking if the target vertex has been visited
+                        if (visited.find(target_v) == visited.end()) {
+                            // Add edge to path
+                            path.push_back(e);
+                            // Accumulate edge weight
+                            double edge_weight = mesh_.graph_[e].weight;
+                            double new_total_weight = total_weight + edge_weight;
+
+                            // Recursive call to continue path exploration
+                            find_paths(target_v, path, new_total_weight, visited);
+
+                            // Backtrack: remove edge from path
+                            path.pop_back();
+                        }
+                    }
+
+                    // Remove current vertex from visited before backtracking
+                    visited.erase(current);
+                };
+
+                // Start the search
+                std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> path;
+                std::unordered_set<boost::graph_traits<Mesh::Graph>::vertex_descriptor> visited;
+                find_paths(start_vertex, path, 0.0, visited);
+
+                if (min_path_edges.empty()) {
+                    echo::error("No path found from start to end.");
+                    swaths.clear();
+                } else {
+                    // Build the swaths vector from min_path_edges
+                    swaths.clear();
+                    for (const auto& e : min_path_edges) {
+                        swaths.push_back(mesh_.graph_[e].swath);
+                    }
+                    echo::info("Optimal path found with total weight: {}", min_total_weight);
+                }
+            }
     };
 } // namespace farmtrax
 

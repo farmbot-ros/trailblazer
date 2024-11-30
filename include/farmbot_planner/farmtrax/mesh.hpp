@@ -124,7 +124,7 @@ namespace farmtrax {
 
                     // Check if edge already exists between start_vertex and end_vertex
                     if (!edge_exists_between_vertices(start_vertex, end_vertex)) {
-                        double weight = (swath.type == SwathType::LINE) ? (weight_on_headlands ? 1.0 : 0.0) : (weight_on_headlands ? 0.0 : 1.0);
+                        double weight = 0.0;
                         EdgeProperties props(swath, weight);
                         boost::add_edge(start_vertex, end_vertex, props, graph_);
                     }
@@ -147,7 +147,6 @@ namespace farmtrax {
                         if (!edge_exists_between_vertices(end_vertex_i, start_vertex_j)) {
                             // Calculate weight (e.g., Euclidean distance between end_point_i and start_point_j)
                             double weight = bg::distance(end_point_i, start_point_j);
-
                             // Create a connection swath representing the turn (from end of swath_i to start of swath_j)
                             Swath connection_swath;
                             connection_swath.type = SwathType::TURN; // Assuming TURN is the type for these connections
