@@ -1,4 +1,5 @@
 #include <memory>
+#include <nav_msgs/msg/detail/path__struct.hpp>
 #include <rclcpp/logging.hpp>
 #include <vector>
 #include <string>
@@ -16,6 +17,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/polygon_stamped.hpp"
 #include "geometry_msgs/msg/point32.hpp"
+#include "nav_msgs/msg/path.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_interfaces/srv/get_the_field.hpp"
@@ -41,10 +43,11 @@ private:
     farmtrax::Mesh mesh_;
     farmtrax::Route route_;
 
-    visualization_msgs::msg::MarkerArray field_arrows_;
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
+    visualization_msgs::msg::MarkerArray field_arrows_;
     visualization_msgs::msg::MarkerArray graph_markers_;
+    nav_msgs::msg::Path path_;
 
     rclcpp::TimerBase::SharedPtr visualization_timer_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
@@ -57,6 +60,7 @@ private:
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr graphviz_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
 public:
     FieldProcessorNode() : Node("ab_planner",
@@ -77,6 +81,7 @@ public:
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/outer_field", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
         graphviz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/graph", 10);
+        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("pln/path", 10);
 
         // Segment publisher
         segment_publisher_ = this->create_publisher<farmbot_interfaces::msg::Segments>("pln/segments", 10);
@@ -109,6 +114,7 @@ private:
         inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
         graphviz_pub_->publish(graph_markers_);
+        path_publisher_->publish(path_);
     }
 
     void on_timer() {
@@ -131,6 +137,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
+        field_arrows_ = vector2ArrowsColor(swaths_.get_swaths());
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
         mesh_.build_graph(swaths_);
@@ -138,9 +145,9 @@ private:
         RCLCPP_INFO (this->get_logger(), "Graph generated");
 
         route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
-        field_arrows_ = vector2ArrowsColor(route_.get_swaths());
+        path_ = vector2Path(route_.get_swaths());
         segments_ = vector2Segments(route_.get_swaths());
-        RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
+        // RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
     }
 
     std::vector<std::pair<double, double>> get_field(std::string geojson_file_path = "") {
@@ -240,6 +247,22 @@ private:
     }
 
 
+    nav_msgs::msg::Path vector2Path(const std::vector<farmtrax::Swath>& swaths) {
+        nav_msgs::msg::Path path;
+        path.header.frame_id = "map";
+        path.header.stamp = rclcpp::Clock().now();
+        for (const auto& swath : swaths) {
+            for (const auto& point : swath.swath) {
+                geometry_msgs::msg::PoseStamped pose;
+                pose.pose.position.x = point.x();
+                pose.pose.position.y = point.y();
+                path.poses.push_back(pose);
+            }
+        }
+        return path;
+    }
+
+
     visualization_msgs::msg::MarkerArray graph2Markers(const farmtrax::Mesh& mesh) {
         int id = 0;  // Unique ID for each marker
         visualization_msgs::msg::MarkerArray marker_array;
@@ -265,9 +288,9 @@ private:
             marker.pose.orientation.w = 1.0;
 
             // Set the scale of the marker
-            marker.scale.x = 2.0;
-            marker.scale.y = 2.0;
-            marker.scale.z = 2.0;
+            marker.scale.x = 1.0;
+            marker.scale.y = 1.0;
+            marker.scale.z = 1.0;
 
             // Set the color (blue)
             marker.color.r = 0.0f;
@@ -299,7 +322,7 @@ private:
             marker.action = visualization_msgs::msg::Marker::ADD;
 
             // Set the scale of the marker
-            marker.scale.x = 0.1;  // Line width
+            marker.scale.x = 0.01;  // Line width
 
             // Set the color (violet)
             marker.color.r = 0.5f;
