@@ -1,6 +1,7 @@
 #include <memory>
 #include <nav_msgs/msg/detail/path__struct.hpp>
 #include <rclcpp/logging.hpp>
+#include <spdlog/spdlog.h>
 #include <vector>
 #include <string>
 #include <utility>
@@ -25,6 +26,7 @@
 #include "farmbot_interfaces/msg/segments.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
+namespace echo = spdlog;
 using namespace std::chrono_literals;
 
 class FieldProcessorNode : public rclcpp::Node {
@@ -186,17 +188,10 @@ private:
         farmbot_interfaces::msg::Segments segments;
         for (const auto& swath : swaths) {
             farmbot_interfaces::msg::Segment segment;
-            if (swath.direction == farmtrax::Direction::REVERSE) {
-                segment.origin.pose.position.x = swath.swath[1].x();
-                segment.origin.pose.position.y = swath.swath[1].y();
-                segment.destination.pose.position.x = swath.swath[0].x();
-                segment.destination.pose.position.y = swath.swath[0].y();
-            } else {
-                segment.origin.pose.position.x = swath.swath[0].x();
-                segment.origin.pose.position.y = swath.swath[0].y();
-                segment.destination.pose.position.x = swath.swath[1].x();
-                segment.destination.pose.position.y = swath.swath[1].y();
-            }
+            segment.origin.pose.position.x = swath.swath[0].x();
+            segment.origin.pose.position.y = swath.swath[0].y();
+            segment.destination.pose.position.x = swath.swath[1].x();
+            segment.destination.pose.position.y = swath.swath[1].y();
             segments.segments.push_back(segment);
         }
         return segments;
@@ -236,9 +231,6 @@ private:
             geometry_msgs::msg::Point p2;
             p2.x = swath.swath[1].x();
             p2.y = swath.swath[1].y();
-            if (swath.direction == farmtrax::Direction::REVERSE) {
-                std::swap(p1, p2);
-            }
             arrow.points.push_back(p1);
             arrow.points.push_back(p2);
             markers.markers.push_back(arrow);
@@ -249,7 +241,7 @@ private:
 
     nav_msgs::msg::Path vector2Path(const std::vector<farmtrax::Swath>& swaths) {
         nav_msgs::msg::Path path;
-        path.header.frame_id = "map";
+        path.header.frame_id = namespace_ + "/map";
         path.header.stamp = rclcpp::Clock().now();
         for (const auto& swath : swaths) {
             for (const auto& point : swath.swath) {

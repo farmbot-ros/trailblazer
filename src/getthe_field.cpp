@@ -4,6 +4,7 @@
 #include <vector>
 #include <sstream>
 #include <json/json.h>
+#include <spdlog/spdlog.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
@@ -16,6 +17,7 @@
 using GetTheField = farmbot_interfaces::srv::GetTheField;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
+namespace echo = spdlog;
 
 class GetTheFieldService : public rclcpp::Node {
     private:
@@ -28,12 +30,18 @@ class GetTheFieldService : public rclcpp::Node {
         rclcpp::CallbackGroup::SharedPtr service_callback_group_;
 
     public:
-        GetTheFieldService() : Node("getthe_field") {
+        GetTheFieldService() : Node("getthe_field",
+            rclcpp::NodeOptions()
+            .allow_undeclared_parameters(true)
+            .automatically_declare_parameters_from_overrides(true)
+        ){
 
             std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_planner");
             std::string geojson_path = package_share_directory + "/config/field.geojson";
 
             geojson_file_ = this->get_parameter_or<std::string>("geojson_file", geojson_path);
+
+            echo::info("GeoJSON file: {}", geojson_file_);
 
             // Create callback groups
             client_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);

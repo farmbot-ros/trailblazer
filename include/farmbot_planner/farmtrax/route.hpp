@@ -219,7 +219,8 @@ namespace farmtrax {
                 // Base Case: If all swaths have been visited return true
                 if (visited_swaths.size() == total_swaths) { return true; }
 
-                echo::info("Depth: {}", depth++);
+                depth++;
+                // echo::info("Depth: {}", depth);
 
                 boost::graph_traits<Mesh::Graph>::out_edge_iterator ei2, ei_end2;
                 std::vector<boost::graph_traits<Mesh::Graph>::edge_descriptor> line_edges;
@@ -238,11 +239,11 @@ namespace farmtrax {
                     const EdgeProperties& props = mesh_.graph_[edge];
                     boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(edge, mesh_.graph_);
                     const std::string& swath_uuid = props.swath.uuid;
-                    // Prevent immediate backtracking
                     if (
                         (next_vertex == previous_vertex) ||
                         (visited_swaths.find(swath_uuid) != visited_swaths.end())
                     ) { continue; }
+
                     path.push_back(props.swath);
                     visited_swaths.insert(swath_uuid);
                     if (recursive_func(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex, depth)) {
@@ -255,7 +256,10 @@ namespace farmtrax {
                 for (const auto& pair : turn_edges) {
                     const EdgeProperties& props = mesh_.graph_[pair];
                     boost::graph_traits<Mesh::Graph>::vertex_descriptor next_vertex = boost::target(pair, mesh_.graph_);
-                    if (next_vertex == previous_vertex) { continue; }
+                    const std::string& swath_uuid = props.swath.uuid;
+                    if (
+                        (next_vertex == previous_vertex)
+                    ) { continue; }
                     path.push_back(props.swath);
                     if (recursive_func(next_vertex, end_vertex, visited_swaths, path, total_swaths, current_vertex, depth)) {
                         return true;
@@ -263,7 +267,9 @@ namespace farmtrax {
                     path.pop_back();
                 }
 
-                echo::info("Depth: {}", depth--);
+                //backtrack
+                depth--;
+                // echo::info("Depth: {}", depth);
 
                 return false; // No valid path found from this vertex
             }

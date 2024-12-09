@@ -251,7 +251,13 @@ namespace farmtrax {
                         swath.uuid = generate_UUID();  // Generate a unique ID for each swath
                         swath.type = SwathType::LINE; // Always mark as LINE here
                         swath.length = bg::length(segment); // Calculate the length of the swath
-                        swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
+                        // swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
+                        if (alternate) {
+                            swath.direction = Direction::FORWARD;
+                        } else {
+                            swath.direction = Direction::REVERSE;
+                            swath.swath = reverse_line(segment);
+                        }
                         swaths_.push_back(swath);
 
                         insert_point_at_closest_location(new_polygon, segment.front());
@@ -263,6 +269,14 @@ namespace farmtrax {
                         swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                     }
                 }
+            }
+
+            LineString reverse_line(const LineString& line) {
+                LineString reversed_line;
+                for (auto it = line.rbegin(); it != line.rend(); it++) {
+                    reversed_line.push_back(*it);
+                }
+                return reversed_line;
             }
 
             // Function to generate a line at a certain offset from the center, adjusted for the angle

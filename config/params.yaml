@@ -19,7 +19,7 @@ goto_field:
 getthe_field:
     ros__parameters:
         name: "getthe_field"
-        geojson_file: "/home/bresilla/farmbot/src/farmbot_planner/config/field.geojson"
+        geojson_file: "/home/bresilla/FARMBOT/src/farmbot_planner/config/field2.geojson"
 
 to_nav:
     ros__parameters:
