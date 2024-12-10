@@ -269,6 +269,35 @@ namespace farmtrax {
                         swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                     }
                 }
+
+                std::vector<Swath> temp;
+                // for (int i = 0; i < alternate_freq; ++i) {
+                //     // Iterate through the vector, stepping by n
+                //     for (size_t j = i; j < swaths_.size(); j += alternate_freq) {
+                //         // temp.push_back(vec[j]);
+                //         temp.push_back(swaths_[j]);
+                //     }
+                // }
+                //
+                // Iterate over each group based on n
+                for (int i = 0; i < alternate_freq; ++i) {
+                    std::vector<Swath> group; // Temporary group to collect elements
+
+                    // Iterate through the vector, stepping by n
+                    for (size_t j = i; j < swaths_.size(); j += alternate_freq) {
+                        group.push_back(swaths_[j]);
+                    }
+
+                    // If the group index is odd, reverse the group
+                    if (i % 2 != 0) {
+                        std::reverse(group.begin(), group.end());
+                    }
+
+                    // Append the group to the temp vector
+                    temp.insert(temp.end(), group.begin(), group.end());
+                }
+
+                swaths_ = temp;
             }
 
             LineString reverse_line(const LineString& line) {
