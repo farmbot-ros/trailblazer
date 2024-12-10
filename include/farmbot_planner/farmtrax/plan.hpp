@@ -33,23 +33,13 @@ namespace farmtrax {
                 node_ = node;
             }
 
-            void plan_out(std::vector<Swath> swaths, int alternate_freq, bool one) {
-                // Iterate over each group based on n
-                bool alternate = true;
-                int counter = 0;
-
-                for (size_t i = 0; i < swaths.size(); i ++) {
-                    counter++;
-                    alternate = (counter % alternate_freq == 0) ? !alternate : alternate;
-                    if (alternate) {
-                        swaths[i].direction = Direction::FORWARD;
-                    } else {
-                        swaths[i].direction = Direction::REVERSE;
-                        swaths[i].swath = reverse_line(swaths[i].swath);
-                    }
+            void plan_out(std::vector<Swath> swaths, int alternate_freq, bool only_one) {
+                // reverse every other swath based on alternate_freq
+                for (size_t i = 0; i < swaths.size(); i++) {
+                    if (((i / alternate_freq) % 2) == 1) { swaths[i].flip(); }
                 }
 
-                if (one){
+                if (only_one){
                     std::vector<Swath> temp;
                     for (int i = 0; i < alternate_freq; ++i) {
                         std::vector<Swath> group; // Temporary group to collect elements

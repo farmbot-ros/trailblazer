@@ -144,7 +144,7 @@ private:
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, vehicle_width_);
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
-        plan_.plan_out(swaths_.get_swaths(), alternate_freq_, true);
+        plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
         field_arrows_ = vector2ArrowsColor(plan_.get_swaths_vec()[0]);
         RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);
 

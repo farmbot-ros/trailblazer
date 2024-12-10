@@ -48,43 +48,30 @@ namespace farmtrax {
         ROAD
     };
 
-    enum class Direction {
-        FORWARD,
-        REVERSE,
-        ANY
-    };
-
     // Struct to represent each swath, along with its properties
     struct Swath {
         LineString swath;         // The actual swath line (geometry)
         std::string uuid;         // A unique identifier for each swath
         SwathType type;           // The type of swath (LINE, TURN, PATH)
-        Direction direction;      // The direction of the swath (FORWARD, REVERSE)
-        double length;             // Length of the swath
+        double length;            // Length of the swath
 
         bool intersects(const Field& field) const {
             Polygon fieldPolygon = field.get_polygon();
             return bg::intersects(fieldPolygon, swath);
         }
 
-        Swath reverse() const {
-            Swath new_swath = *this;
+        void flip() {
             LineString reversed_swath = swath;
             std::reverse(reversed_swath.begin(), reversed_swath.end());
-            auto new_uuid = boost::uuids::to_string(boost::uuids::random_generator()());
-            auto new_direction = (this->direction == Direction::FORWARD) ? Direction::REVERSE : Direction::FORWARD;
-            new_swath.swath = reversed_swath;
-            new_swath.uuid = new_uuid;
-            new_swath.direction = new_direction;
-            return new_swath;
+            swath = reversed_swath;
         }
 
-        Swath create_swath(const Point& start, const Point& end, SwathType type, Direction direction, std::string uuid = "") {
+        Swath create_swath(const Point& start, const Point& end, SwathType type, std::string uuid = "") {
             LineString line;
             bg::append(line, start);
             bg::append(line, end);
             std::string uuid_ = uuid.empty() ? boost::uuids::to_string(boost::uuids::random_generator()()) : uuid;
-            return {line, uuid_, type, direction, 0.0};
+            return {line, uuid_, type, 0.0};
         }
     };
 
@@ -239,7 +226,6 @@ namespace farmtrax {
                         swath.uuid = generate_UUID();  // Generate a unique ID for each swath
                         swath.type = SwathType::LINE; // Always mark as LINE here
                         swath.length = bg::length(segment); // Calculate the length of the swath
-                        // swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
                         swaths_.push_back(swath);
 
                         insert_point_at_closest_location(new_polygon, segment.front());
