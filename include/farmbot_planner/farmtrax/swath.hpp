@@ -97,7 +97,6 @@ namespace farmtrax {
             rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
             std::vector<Swath> swaths_;             // Holds Swath structs
             Rtree swath_rtree_;                     // R-tree for efficient spatial querying of swaths
-            Polygon connecting_polygon_;            // Polygon to represent the connecting swath
 
         public:
             Swaths() = default;
@@ -166,11 +165,6 @@ namespace farmtrax {
                     }
                 }
                 return false;
-            }
-
-            // get connecting polygon
-            const Polygon get_connecting_polygon() const {
-                return connecting_polygon_;
             }
 
             // create a funtion that takes the generated swaths and divides them into nth goups
@@ -282,17 +276,14 @@ namespace farmtrax {
                 // Iterate over each group based on n
                 for (int i = 0; i < alternate_freq; ++i) {
                     std::vector<Swath> group; // Temporary group to collect elements
-
                     // Iterate through the vector, stepping by n
                     for (size_t j = i; j < swaths_.size(); j += alternate_freq) {
                         group.push_back(swaths_[j]);
                     }
-
                     // If the group index is odd, reverse the group
                     if (i % 2 != 0) {
                         std::reverse(group.begin(), group.end());
                     }
-
                     // Append the group to the temp vector
                     temp.insert(temp.end(), group.begin(), group.end());
                 }
