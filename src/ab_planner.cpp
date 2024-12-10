@@ -9,6 +9,7 @@
 #include "farmbot_planner/utils/geojson.hpp"
 #include "farmbot_planner/farmtrax/field.hpp"
 #include "farmbot_planner/farmtrax/swath.hpp"
+#include "farmbot_planner/farmtrax/plan.hpp"
 #include "farmbot_planner/farmtrax/mesh.hpp"
 #include "farmbot_planner/farmtrax/route.hpp"
 #include <visualization_msgs/msg/detail/marker_array__struct.hpp>
@@ -42,6 +43,7 @@ private:
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
+    farmtrax::Plan plan_;
     farmtrax::Mesh mesh_;
     farmtrax::Route route_;
 
@@ -104,6 +106,7 @@ public:
 
     void init() {
         swaths_.pass_node(this->shared_from_this());
+        plan_.pass_node(this->shared_from_this());
         route_.pass_node(this->shared_from_this());
         field_.pass_node(this->shared_from_this());
         mesh_.pass_node(this->shared_from_this());
@@ -138,11 +141,14 @@ private:
         inner_polygon_ = vector2Polygon(hl.get_border_points());
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
-        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, alternate_freq_, vehicle_width_);
-        field_arrows_ = vector2ArrowsColor(swaths_.get_swaths());
+        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, vehicle_width_);
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
-        mesh_.build_graph(swaths_);
+        plan_.plan_out(swaths_.get_swaths(), alternate_freq_, true);
+        field_arrows_ = vector2ArrowsColor(plan_.get_swaths_vec()[0]);
+        RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);
+
+        mesh_.build_graph(plan_.get_swaths_vec()[0]);
         graph_markers_ =  graph2Markers(mesh_);
         RCLCPP_INFO (this->get_logger(), "Graph generated");
 
@@ -246,6 +252,7 @@ private:
         for (const auto& swath : swaths) {
             for (const auto& point : swath.swath) {
                 geometry_msgs::msg::PoseStamped pose;
+                pose.header = path.header;
                 pose.pose.position.x = point.x();
                 pose.pose.position.y = point.y();
                 path.poses.push_back(pose);

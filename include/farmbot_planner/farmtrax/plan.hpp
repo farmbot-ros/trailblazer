@@ -23,40 +23,73 @@ namespace echo = spdlog;
 namespace farmtrax {
     class Plan {
         private:
-            rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
+            rclcpp::Node::SharedPtr node_;                  // ROS 2 node handle
+            std::vector<std::vector<Swath>> swaths_vec_;    // Holds Swath structs
 
         public:
+            Plan() = default;
 
+            void pass_node(rclcpp::Node::SharedPtr node) {
+                node_ = node;
+            }
 
+            void plan_out(std::vector<Swath> swaths, int alternate_freq, bool one) {
+                // Iterate over each group based on n
+                bool alternate = true;
+                int counter = 0;
+
+                for (size_t i = 0; i < swaths.size(); i ++) {
+                    counter++;
+                    alternate = (counter % alternate_freq == 0) ? !alternate : alternate;
+                    if (alternate) {
+                        swaths[i].direction = Direction::FORWARD;
+                    } else {
+                        swaths[i].direction = Direction::REVERSE;
+                        swaths[i].swath = reverse_line(swaths[i].swath);
+                    }
+                }
+
+                if (one){
+                    std::vector<Swath> temp;
+                    for (int i = 0; i < alternate_freq; ++i) {
+                        std::vector<Swath> group; // Temporary group to collect elements
+                        // Iterate through the vector, stepping by n
+                        for (size_t j = i; j < swaths.size(); j += alternate_freq) {
+                            group.push_back(swaths[j]);
+                        }
+                        // If the group index is odd, reverse the group
+                        if (i % 2 != 0) {
+                            std::reverse(group.begin(), group.end());
+                        }
+                        // Append the group to the temp vector
+                        temp.insert(temp.end(), group.begin(), group.end());
+                    }
+                    swaths_vec_.push_back(temp);
+                } else {
+                    for (int i = 0; i < alternate_freq; ++i) {
+                        // Iterate through the vector, stepping by n
+                        std::vector<Swath> temp;
+                        for (size_t j = i; j < swaths.size(); j += alternate_freq) {
+                            temp.push_back(swaths[j]);
+                        }
+                        swaths_vec_.push_back(temp);
+                    }
+                }
+            }
+
+            std::vector<std::vector<Swath>> get_swaths_vec() {
+                return swaths_vec_;
+            }
+
+        private:
+            LineString reverse_line(const LineString& line) {
+                LineString reversed_line;
+                for (auto it = line.rbegin(); it != line.rend(); it++) {
+                    reversed_line.push_back(*it);
+                }
+                return reversed_line;
+            }
     };
 } // namespace farmtrax
 
 #endif // ROUTE_HPP
-
-// // Iterate over each group based on n
-// if (one){
-//     std::vector<Swath> temp;
-//     for (int i = 0; i < alternate_freq; ++i) {
-//         std::vector<Swath> group; // Temporary group to collect elements
-//         // Iterate through the vector, stepping by n
-//         for (size_t j = i; j < swaths.size(); j += alternate_freq) {
-//             group.push_back(swaths[j]);
-//         }
-//         // If the group index is odd, reverse the group
-//         if (i % 2 != 0) {
-//             std::reverse(group.begin(), group.end());
-//         }
-//         // Append the group to the temp vector
-//         temp.insert(temp.end(), group.begin(), group.end());
-//     }
-//     swaths_.push_back(temp);
-// } else {
-//     for (int i = 0; i < alternate_freq; ++i) {
-//         // Iterate through the vector, stepping by n
-//         std::vector<Swath> temp;
-//         for (size_t j = i; j < swaths.size(); j += alternate_freq) {
-//             temp.push_back(swaths[j]);
-//         }
-//         swaths_.push_back(temp);
-//     }
-// }

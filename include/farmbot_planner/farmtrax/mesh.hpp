@@ -56,7 +56,7 @@ namespace farmtrax {
     class Mesh {
         private:
             rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
-            Swaths swaths_;
+            std::vector<Swath> swaths_;             // List of swaths
 
         public:
             // Define the graph type with VertexProperties and EdgeProperties
@@ -78,7 +78,7 @@ namespace farmtrax {
                 node_ = node;
             }
 
-            void build_graph(const Swaths& swaths, bool weight_on_headlands = false) {
+            void build_graph(std::vector<Swath> swaths, bool weight_on_headlands = false) {
                 swaths_ = swaths;
                 // Clear any existing graph data
                 graph_ = Graph();
@@ -115,7 +115,7 @@ namespace farmtrax {
                 };
 
                 // First, add edges for each swath from its start to end point
-                for (const auto& swath : swaths_.get_swaths()) {
+                for (const auto& swath : swaths_) {
                     const Point& start_point = swath.swath.front();
                     const Point& end_point = swath.swath.back();
 
@@ -131,7 +131,7 @@ namespace farmtrax {
                 }
 
                 // Now, connect each swath's end to every other swath's start (excluding itself)
-                const auto& swaths_list = swaths_.get_swaths();
+                const auto& swaths_list = swaths_;
                 for (const auto& swath_i : swaths_list) {
                     const Point& end_point_i = swath_i.swath.back();
                     boost::graph_traits<Graph>::vertex_descriptor end_vertex_i = get_or_create_vertex(end_point_i);

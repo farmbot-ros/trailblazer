@@ -102,16 +102,16 @@ namespace farmtrax {
             Swaths() = default;
 
             // Constructor to initialize with a field and swath width
-            Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
-                gen_swaths(outer_field, inner_field, swath_width, angle_degrees, alternate_freq, inner_offset);
+            Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
+                gen_swaths(outer_field, inner_field, swath_width, angle_degrees, inner_offset);
             }
 
             void pass_node(rclcpp::Node::SharedPtr node) {
                 node_ = node;
             }
 
-            void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
-                generate_swaths(outer_field, inner_field, swath_width, angle_degrees, alternate_freq, inner_offset);
+            void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
+                generate_swaths(outer_field, inner_field, swath_width, angle_degrees, inner_offset);
             }
 
             // Get the swaths as a vector of Swath structs
@@ -194,7 +194,7 @@ namespace farmtrax {
 
         private:
             // Helper function to generate swaths with a specified angle
-            void generate_swaths(const Field& outer_field_, const Field& inner_field_, double swath_width, double angle_degrees, int alternate_freq = 1, double inner_offset = 1.0) {
+            void generate_swaths(const Field& outer_field_, const Field& inner_field_, double swath_width, double angle_degrees, double inner_offset = 1.0) {
                 swaths_.clear();
                 swath_rtree_.clear(); // Clear existing entries
 
@@ -219,14 +219,8 @@ namespace farmtrax {
                                 (boundingBox.min_corner().y() + boundingBox.max_corner().y()) / 2);
 
                 // Iterate to generate swaths with a defined offset based on swath width
-                bool alternate = true;
-                int counter = 0;
                 auto new_polygon = fieldPolygon;
                 for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width) {
-                    counter++;
-                    // Alternate the direction of the swaths based on the frequency
-                    alternate = (counter % alternate_freq == 0) ? !alternate : alternate;
-
                     double length = std::max(outer_field_.get_width(), outer_field_.get_height()) * 2;
                     LineString swathLine = generate_swathine(centerPoint, angle_radians, offset, length);
                     // Clip the swath line to fit within the field polygon
@@ -246,12 +240,6 @@ namespace farmtrax {
                         swath.type = SwathType::LINE; // Always mark as LINE here
                         swath.length = bg::length(segment); // Calculate the length of the swath
                         // swath.direction = alternate ? Direction::FORWARD : Direction::REVERSE;
-                        if (alternate) {
-                            swath.direction = Direction::FORWARD;
-                        } else {
-                            swath.direction = Direction::REVERSE;
-                            swath.swath = reverse_line(segment);
-                        }
                         swaths_.push_back(swath);
 
                         insert_point_at_closest_location(new_polygon, segment.front());
@@ -263,40 +251,6 @@ namespace farmtrax {
                         swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                     }
                 }
-
-                std::vector<Swath> temp;
-                // for (int i = 0; i < alternate_freq; ++i) {
-                //     // Iterate through the vector, stepping by n
-                //     for (size_t j = i; j < swaths_.size(); j += alternate_freq) {
-                //         // temp.push_back(vec[j]);
-                //         temp.push_back(swaths_[j]);
-                //     }
-                // }
-                //
-                // Iterate over each group based on n
-                for (int i = 0; i < alternate_freq; ++i) {
-                    std::vector<Swath> group; // Temporary group to collect elements
-                    // Iterate through the vector, stepping by n
-                    for (size_t j = i; j < swaths_.size(); j += alternate_freq) {
-                        group.push_back(swaths_[j]);
-                    }
-                    // If the group index is odd, reverse the group
-                    if (i % 2 != 0) {
-                        std::reverse(group.begin(), group.end());
-                    }
-                    // Append the group to the temp vector
-                    temp.insert(temp.end(), group.begin(), group.end());
-                }
-
-                swaths_ = temp;
-            }
-
-            LineString reverse_line(const LineString& line) {
-                LineString reversed_line;
-                for (auto it = line.rbegin(); it != line.rend(); it++) {
-                    reversed_line.push_back(*it);
-                }
-                return reversed_line;
             }
 
             // Function to generate a line at a certain offset from the center, adjusted for the angle
