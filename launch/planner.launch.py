@@ -85,7 +85,7 @@ def launch_setup(context, *args, **kwargs):
             yaml.safe_load(open(param_file))['global']['ros__parameters']
         ]
     )
-    # nodes_array.append(to_nav)
+    nodes_array.append(to_nav)
 
     return nodes_array
 

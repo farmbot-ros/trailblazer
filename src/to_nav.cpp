@@ -155,7 +155,7 @@ private:
 
     void feedback_callback(rclcpp_action::ClientGoalHandle<farmbot_interfaces::action::Waypoints>::SharedPtr,
         const std::shared_ptr<const farmbot_interfaces::action::Waypoints::Feedback> feedback) {
-        RCLCPP_INFO(this->get_logger(), "Received feedback");
+        RCLCPP_INFO_ONCE(this->get_logger(), "Received feedback");
         // Optionally update diagnostic status or other variables
     }
 

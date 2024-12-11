@@ -128,6 +128,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
         swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, vehicle_width_);
+        swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
         plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
