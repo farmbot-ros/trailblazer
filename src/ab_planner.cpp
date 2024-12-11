@@ -1,3 +1,4 @@
+#include <geometry_msgs/msg/detail/polygon__struct.hpp>
 #include <memory>
 #include <nav_msgs/msg/detail/path__struct.hpp>
 #include <rclcpp/logging.hpp>
@@ -25,19 +26,24 @@
 #include "farmbot_interfaces/srv/get_the_field.hpp"
 #include "farmbot_interfaces/msg/segment.hpp"
 #include "farmbot_interfaces/msg/segments.hpp"
+#include "farmbot_interfaces/msg/swath.hpp"
+#include "farmbot_interfaces/msg/swaths.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
 namespace echo = spdlog;
 using namespace std::chrono_literals;
+using namespace std::placeholders;
 
 class FieldProcessorNode : public rclcpp::Node {
 private:
+    bool calculator_ = false;
     double vehicle_width_;
     double vehicle_coverage_;
     int alternate_freq_;
     double path_angle_;
 
     bool planner_initialized_ = false;
+    bool received_swaths_ = false;
 
     std::string namespace_;
 
@@ -60,6 +66,11 @@ private:
     farmbot_interfaces::msg::Segments segments_;
     rclcpp::Publisher<farmbot_interfaces::msg::Segments>::SharedPtr segment_publisher_;
 
+    farmbot_interfaces::msg::Swaths swaths_msg_;
+    std::vector<farmtrax::Swath> swaths_vec_;
+    rclcpp::Publisher<farmbot_interfaces::msg::Swaths>::SharedPtr swaths_publisher_;
+    rclcpp::Subscription<farmbot_interfaces::msg::Swaths>::SharedPtr swaths_subscriber_;
+
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr graphviz_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
@@ -77,6 +88,8 @@ public:
         alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
 
+        calculator_ = this->get_parameter_or<bool>("calculator", true);
+
         // Create the service clients
         get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field");
 
@@ -91,6 +104,10 @@ public:
         segment_publisher_ = this->create_publisher<farmbot_interfaces::msg::Segments>("pln/segments", 10);
         on_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::on_timer, this));
 
+
+        // Swaths subscriber
+        swaths_subscriber_ = this->create_subscription<farmbot_interfaces::msg::Swaths>("/pln/swaths", 10, std::bind(&FieldProcessorNode::swaths_callback, this, _1));
+
         // Timers
         visualization_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::on_service_start_timer, this));
 
@@ -100,8 +117,6 @@ public:
             namespace_ = namespace_.substr(1);
         }
 
-        // Run the main processing in a separate thread
-        std::thread([this] { runner(); }).detach();
     }
 
     void init() {
@@ -110,6 +125,14 @@ public:
         route_.pass_node(this->shared_from_this());
         field_.pass_node(this->shared_from_this());
         mesh_.pass_node(this->shared_from_this());
+        // Run the main processing in a separate thread
+        if (calculator_) {
+            swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("/pln/swaths", 10);
+            std::thread([this] {
+                gen_swaths();
+                gen_route();
+            }).detach();
+        }
     }
 
 private:
@@ -120,6 +143,27 @@ private:
         field_arrows_pub_->publish(field_arrows_);
         graphviz_pub_->publish(graph_markers_);
         path_publisher_->publish(path_);
+        swaths_publisher_->publish(swaths_msg_);
+    }
+
+    void swaths_callback(const farmbot_interfaces::msg::Swaths::SharedPtr msg) {
+        std::vector<farmtrax::Swath> swaths;
+        for (const auto& swath_msg : msg->swaths) {
+            farmtrax::Swath swath;
+            if (swath_msg.robot.data == namespace_){
+                for (const auto& point : swath_msg.line.points) {
+                    swath.swath.push_back(farmtrax::Point(point.x, point.y));
+                }
+                swath.length = swath_msg.length.data;
+                swath.uuid = swath_msg.uuid.data;
+                swath.type = static_cast<farmtrax::SwathType>(swath_msg.type.data);
+                swaths.push_back(swath);
+            }
+        }
+        if (!swaths.empty()) {
+            swaths_vec_ = swaths;
+            received_swaths_ = true;
+        }
     }
 
     void on_timer() {
@@ -127,8 +171,7 @@ private:
         segment_publisher_->publish(segments_);
     }
 
-    void runner() {
-        planner_initialized_ = true;
+    void gen_swaths() {
         std::vector<std::pair<double, double>> points = get_field();
         if (points.empty()) {
             RCLCPP_ERROR(this->get_logger(), "Failed to get the field");
@@ -145,10 +188,28 @@ private:
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
         plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
-        field_arrows_ = vector2ArrowsColor(plan_.get_swaths_vec()[0]);
         RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);
 
-        mesh_.build_graph(plan_.get_swaths_vec()[0]);
+
+        for (unsigned long i = 0; i < plan_.get_swaths_vec().size(); i++) {
+            auto temp_swath_msg = swath2SwathMsg(plan_.get_swaths_vec()[i], "robot"+std::to_string(i));
+            swaths_msg_.swaths.insert(swaths_msg_.swaths.end(), temp_swath_msg.swaths.begin(), temp_swath_msg.swaths.end());
+        }
+
+        std::vector<farmtrax::Swath> flat_swaths;
+        for (const auto& swath : plan_.get_swaths_vec()) {
+            flat_swaths.insert(flat_swaths.end(), swath.begin(), swath.end());
+        }
+        field_arrows_ = vector2ArrowsColor(flat_swaths);
+        planner_initialized_ = true;
+    }
+
+    void gen_route() {
+        while (!received_swaths_) {
+            RCLCPP_WARN(this->get_logger(), "Waiting for swaths");
+            std::this_thread::sleep_for(1s);
+        }
+        mesh_.build_graph(swaths_vec_);
         graph_markers_ =  graph2Markers(mesh_);
         RCLCPP_INFO (this->get_logger(), "Graph generated");
 
@@ -156,6 +217,27 @@ private:
         path_ = vector2Path(route_.get_swaths());
         segments_ = vector2Segments(route_.get_swaths());
         // RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
+    }
+
+    farmbot_interfaces::msg::Swaths swath2SwathMsg(const std::vector<farmtrax::Swath>& swaths, std::string robot) {
+        farmbot_interfaces::msg::Swaths swaths_msg;
+        for (const auto& swath : swaths) {
+            farmbot_interfaces::msg::Swath swath_msg;
+            geometry_msgs::msg::Polygon polygon;
+            for (const auto& point : swath.swath) {
+                geometry_msgs::msg::Point32 p;
+                p.x = point.x();
+                p.y = point.y();
+                polygon.points.push_back(p);
+            }
+            swath_msg.line = polygon;
+            swath_msg.robot.data = robot;
+            swath_msg.length.data = swath.length;
+            swath_msg.uuid.data = swath.uuid;
+            swath_msg.type.data = static_cast<uint8_t>(swath.type);
+            swaths_msg.swaths.push_back(swath_msg);
+        }
+        return swaths_msg;
     }
 
     std::vector<std::pair<double, double>> get_field(std::string geojson_file_path = "") {
