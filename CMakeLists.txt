@@ -27,7 +27,9 @@ install(
 )
 
 set(executables
-    ab_planner
+    # ab_planner
+    gen_lines
+    gen_path
     goto_field
     getthe_field
     to_nav

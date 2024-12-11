@@ -36,49 +36,35 @@ using namespace std::placeholders;
 
 class FieldProcessorNode : public rclcpp::Node {
 private:
-    bool calculator_ = false;
     double vehicle_width_;
     double vehicle_coverage_;
     int alternate_freq_;
     double path_angle_;
 
     bool planner_initialized_ = false;
-    bool received_swaths_ = false;
 
     std::string namespace_;
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
     farmtrax::Plan plan_;
-    farmtrax::Mesh mesh_;
-    farmtrax::Route route_;
 
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     geometry_msgs::msg::PolygonStamped inner_polygon_;
     visualization_msgs::msg::MarkerArray field_arrows_;
-    visualization_msgs::msg::MarkerArray graph_markers_;
-    nav_msgs::msg::Path path_;
 
-    rclcpp::TimerBase::SharedPtr visualization_timer_;
+    rclcpp::TimerBase::SharedPtr planner_timer_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
 
-    rclcpp::TimerBase::SharedPtr on_timer_;
-    farmbot_interfaces::msg::Segments segments_;
-    rclcpp::Publisher<farmbot_interfaces::msg::Segments>::SharedPtr segment_publisher_;
-
     farmbot_interfaces::msg::Swaths swaths_msg_;
-    std::vector<farmtrax::Swath> swaths_vec_;
     rclcpp::Publisher<farmbot_interfaces::msg::Swaths>::SharedPtr swaths_publisher_;
-    rclcpp::Subscription<farmbot_interfaces::msg::Swaths>::SharedPtr swaths_subscriber_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr graphviz_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
 public:
-    FieldProcessorNode() : Node("ab_planner",
+    FieldProcessorNode() : Node("gen_lines",
             rclcpp::NodeOptions()
             .allow_undeclared_parameters(true)
             .automatically_declare_parameters_from_overrides(true)
@@ -88,8 +74,6 @@ public:
         alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
 
-        calculator_ = this->get_parameter_or<bool>("calculator", true);
-
         // Create the service clients
         get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field");
 
@@ -97,19 +81,12 @@ public:
         inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/inner_field", 10);
         outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/outer_field", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
-        graphviz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/graph", 10);
-        path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("pln/path", 10);
-
-        // Segment publisher
-        segment_publisher_ = this->create_publisher<farmbot_interfaces::msg::Segments>("pln/segments", 10);
-        on_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::on_timer, this));
-
-
-        // Swaths subscriber
-        swaths_subscriber_ = this->create_subscription<farmbot_interfaces::msg::Swaths>("/pln/swaths", 10, std::bind(&FieldProcessorNode::swaths_callback, this, _1));
 
         // Timers
-        visualization_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::on_service_start_timer, this));
+        planner_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::planner_timer_cb, this));
+
+        // Swaths publisher
+        swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("/pln/swaths", 10);
 
         // Namespace
         namespace_ = this->get_namespace();
@@ -122,53 +99,19 @@ public:
     void init() {
         swaths_.pass_node(this->shared_from_this());
         plan_.pass_node(this->shared_from_this());
-        route_.pass_node(this->shared_from_this());
         field_.pass_node(this->shared_from_this());
-        mesh_.pass_node(this->shared_from_this());
-        // Run the main processing in a separate thread
-        if (calculator_) {
-            swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("/pln/swaths", 10);
-            std::thread([this] {
-                gen_swaths();
-                gen_route();
-            }).detach();
-        }
+        std::thread([this] {
+            gen_swaths();
+        }).detach();
     }
 
 private:
-    void on_service_start_timer() {
+    void planner_timer_cb() {
         if (!planner_initialized_) { return; }
         outer_polygon_publisher_->publish(outer_polygon_);
         inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
-        graphviz_pub_->publish(graph_markers_);
-        path_publisher_->publish(path_);
         swaths_publisher_->publish(swaths_msg_);
-    }
-
-    void swaths_callback(const farmbot_interfaces::msg::Swaths::SharedPtr msg) {
-        std::vector<farmtrax::Swath> swaths;
-        for (const auto& swath_msg : msg->swaths) {
-            farmtrax::Swath swath;
-            if (swath_msg.robot.data == namespace_){
-                for (const auto& point : swath_msg.line.points) {
-                    swath.swath.push_back(farmtrax::Point(point.x, point.y));
-                }
-                swath.length = swath_msg.length.data;
-                swath.uuid = swath_msg.uuid.data;
-                swath.type = static_cast<farmtrax::SwathType>(swath_msg.type.data);
-                swaths.push_back(swath);
-            }
-        }
-        if (!swaths.empty()) {
-            swaths_vec_ = swaths;
-            received_swaths_ = true;
-        }
-    }
-
-    void on_timer() {
-        if (!planner_initialized_) { return; }
-        segment_publisher_->publish(segments_);
     }
 
     void gen_swaths() {
@@ -202,21 +145,6 @@ private:
         }
         field_arrows_ = vector2ArrowsColor(flat_swaths);
         planner_initialized_ = true;
-    }
-
-    void gen_route() {
-        while (!received_swaths_) {
-            RCLCPP_WARN(this->get_logger(), "Waiting for swaths");
-            std::this_thread::sleep_for(1s);
-        }
-        mesh_.build_graph(swaths_vec_);
-        graph_markers_ =  graph2Markers(mesh_);
-        RCLCPP_INFO (this->get_logger(), "Graph generated");
-
-        route_.find_optimal(mesh_, farmtrax::Route::Algorithm::EXHAUSTIVE_SEARCH);
-        path_ = vector2Path(route_.get_swaths());
-        segments_ = vector2Segments(route_.get_swaths());
-        // RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
     }
 
     farmbot_interfaces::msg::Swaths swath2SwathMsg(const std::vector<farmtrax::Swath>& swaths, std::string robot) {
@@ -272,19 +200,6 @@ private:
         return polygon;
     }
 
-    farmbot_interfaces::msg::Segments vector2Segments(const std::vector<farmtrax::Swath>& swaths) {
-        farmbot_interfaces::msg::Segments segments;
-        for (const auto& swath : swaths) {
-            farmbot_interfaces::msg::Segment segment;
-            segment.origin.pose.position.x = swath.swath[0].x();
-            segment.origin.pose.position.y = swath.swath[0].y();
-            segment.destination.pose.position.x = swath.swath[1].x();
-            segment.destination.pose.position.y = swath.swath[1].y();
-            segments.segments.push_back(segment);
-        }
-        return segments;
-    }
-
     visualization_msgs::msg::MarkerArray vector2ArrowsColor(const std::vector<farmtrax::Swath>& swaths) {
         visualization_msgs::msg::MarkerArray markers;
         int id = 0;
@@ -324,114 +239,6 @@ private:
             markers.markers.push_back(arrow);
         }
         return markers;
-    }
-
-
-    nav_msgs::msg::Path vector2Path(const std::vector<farmtrax::Swath>& swaths) {
-        nav_msgs::msg::Path path;
-        path.header.frame_id = namespace_ + "/map";
-        path.header.stamp = rclcpp::Clock().now();
-        for (const auto& swath : swaths) {
-            for (const auto& point : swath.swath) {
-                geometry_msgs::msg::PoseStamped pose;
-                pose.header = path.header;
-                pose.pose.position.x = point.x();
-                pose.pose.position.y = point.y();
-                path.poses.push_back(pose);
-            }
-        }
-        return path;
-    }
-
-
-    visualization_msgs::msg::MarkerArray graph2Markers(const farmtrax::Mesh& mesh) {
-        int id = 0;  // Unique ID for each marker
-        visualization_msgs::msg::MarkerArray marker_array;
-
-        // Publish vertices as spheres
-        auto vertices = boost::vertices(mesh.graph_);
-        for (auto vi = vertices.first; vi != vertices.second; ++vi) {
-            auto v = *vi;
-            const farmtrax::Point& p = mesh.graph_[v].point;
-
-            visualization_msgs::msg::Marker marker;
-            marker.header.frame_id = namespace_ + "/map";
-            marker.header.stamp = this->now();
-            marker.ns = "vertices";
-            marker.id = id++;
-            marker.type = visualization_msgs::msg::Marker::SPHERE;
-            marker.action = visualization_msgs::msg::Marker::ADD;
-
-            // Set the pose of the marker
-            marker.pose.position.x = p.x();
-            marker.pose.position.y = p.y();
-            marker.pose.position.z = 0.0;
-            marker.pose.orientation.w = 1.0;
-
-            // Set the scale of the marker
-            marker.scale.x = 1.0;
-            marker.scale.y = 1.0;
-            marker.scale.z = 1.0;
-
-            // Set the color (blue)
-            marker.color.r = 0.0f;
-            marker.color.g = 0.0f;
-            marker.color.b = 1.0f;
-            marker.color.a = 1.0f;
-
-            marker.lifetime = rclcpp::Duration(0, 0);  // Lasts forever
-
-            marker_array.markers.push_back(marker);
-        }
-
-        // Publish edges as lines
-        auto edges = boost::edges(mesh.graph_);
-        for (auto ei = edges.first; ei != edges.second; ++ei) {
-            auto e = *ei;
-            auto s = boost::source(e, mesh.graph_);
-            auto t = boost::target(e, mesh.graph_);
-
-            const farmtrax::Point& sp = mesh.graph_[s].point;
-            const farmtrax::Point& tp = mesh.graph_[t].point;
-
-            visualization_msgs::msg::Marker marker;
-            marker.header.frame_id = namespace_ + "/map";
-            marker.header.stamp = this->now();
-            marker.ns = "edges";
-            marker.id = id++;
-            marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
-            marker.action = visualization_msgs::msg::Marker::ADD;
-
-            // Set the scale of the marker
-            marker.scale.x = 0.01;  // Line width
-
-            // Set the color (violet)
-            marker.color.r = 0.5f;
-            marker.color.g = 0.0f;
-            marker.color.b = 1.0f;
-            marker.color.a = 1.0f;
-
-            marker.lifetime = rclcpp::Duration(0, 0);  // Lasts forever
-
-            // Set the start and end points of the line
-            geometry_msgs::msg::Point start_point;
-            start_point.x = sp.x();
-            start_point.y = sp.y();
-            start_point.z = 0.0;
-
-            geometry_msgs::msg::Point end_point;
-            end_point.x = tp.x();
-            end_point.y = tp.y();
-            end_point.z = 0.0;
-
-            marker.points.push_back(start_point);
-            marker.points.push_back(end_point);
-
-            marker_array.markers.push_back(marker);
-        }
-
-        // Publish the entire marker array
-        return marker_array;
     }
 };
 
