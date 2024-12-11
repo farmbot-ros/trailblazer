@@ -19,7 +19,9 @@ def launch_setup(context, *args, **kwargs):
 
     nodes_array = []
 
-    print(alternate_freq)
+    # print(alternate_freq)
+
+    print({'alternate_freq': alternate_freq} if alternate_freq != '' else {})
 
     is_calculator = False if calculator == '0' else True
 
@@ -31,8 +33,8 @@ def launch_setup(context, *args, **kwargs):
         parameters=[
             yaml.safe_load(open(param_file))['gen_lines']['ros__parameters'],
             yaml.safe_load(open(param_file))['global']['ros__parameters'],
-            {'path_angle': path_angle} if path_angle != '' else {},
-            {'alternate_freq': alternate_freq} if alternate_freq != '' else {}
+            {'path_angle': float(path_angle)} if path_angle != '' else {},
+            {'alternate_freq': int(alternate_freq)} if alternate_freq != '' else {},
         ]
     )
     if is_calculator: nodes_array.append(gen_lines)

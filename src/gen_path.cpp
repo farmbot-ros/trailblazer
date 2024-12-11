@@ -125,7 +125,7 @@ private:
         path_ = vector2Path(route_.get_swaths());
         segments_ = vector2Segments(route_.get_swaths());
         route_initialized_ = true;
-        // RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
+        RCLCPP_INFO(this->get_logger(), "Route generated: %lu", route_.get_swaths().size());
     }
 
     std::vector<farmtrax::Swath> swathMsg2Swath(const farmbot_interfaces::msg::Swaths::SharedPtr msg) {
