@@ -18,12 +18,8 @@ def launch_setup(context, *args, **kwargs):
     param_file = os.path.join(get_package_share_directory('farmbot_planner'), 'config', 'params.yaml')
 
     nodes_array = []
-
-    # print(alternate_freq)
-
-    print({'alternate_freq': alternate_freq} if alternate_freq != '' else {})
-
     is_calculator = False if calculator == '0' else True
+    # print({'alternate_freq': alternate_freq} if alternate_freq != '' else {})
 
     gen_lines = Node(
         package='farmbot_planner',

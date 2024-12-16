@@ -1,15 +1,21 @@
 #include <memory>
+#include <sensor_msgs/msg/detail/nav_sat_fix__struct.hpp>
 #include <string>
 #include <vector>
 #include <sstream>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
+#include "geometry_msgs/msg/point.hpp"
 #include "farmbot_interfaces/srv/go_to_field.hpp"
+#include "farmbot_interfaces/srv/gps2_enu.hpp"
+#include "farmbot_interfaces/srv/enu2_gps.hpp"
 
 #include <curl/curl.h>
 #include <json/json.h> // Install jsoncpp or use another JSON library
 
+using namespace std::chrono_literals;
+using namespace std::placeholders;
 using GetRoute = farmbot_interfaces::srv::GoToField;
 
 // Callback function to handle data received by libcurl
@@ -24,12 +30,23 @@ class OsrmRouteServiceNode : public rclcpp::Node{
     private:
         rclcpp::Service<GetRoute>::SharedPtr service_;
         std::string osrm_server_url_;
+        rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
+        rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
+
+        sensor_msgs::msg::NavSatFix robot_loc_;
+        rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr loc_sub_;
+        bool entry_loc_set_ = false;
+        sensor_msgs::msg::NavSatFix entry_loc_;
+        bool entry_loc_inited_ = false;
+        geometry_msgs::msg::Pose entry_loc_enu_;
 
     public:
         OsrmRouteServiceNode(): Node("goto_field"){
             // Set the public OSRM server URL
             osrm_server_url_ = this->get_parameter_or<std::string>("osrm_server_url", "http://router.project-osrm.org");
 
+            gps2enu_client_ = this->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
+            enu2gps_client_ = this->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
 
             // Create the service
             service_ = this->create_service<GetRoute>(
@@ -37,18 +54,42 @@ class OsrmRouteServiceNode : public rclcpp::Node{
                 std::bind(&OsrmRouteServiceNode::handle_get_route, this, std::placeholders::_1, std::placeholders::_2)
             );
 
+            loc_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>("loc/fix", 10,
+            [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+                robot_loc_ = *msg;
+            });
             RCLCPP_INFO(this->get_logger(), "OSRM Route Service Node is ready.");
+
+            // run in thread to wait for entry location
+            std::thread(&OsrmRouteServiceNode::run_in_thread, this).detach();
         }
 
     private:
+
+        void run_in_thread(){
+            while(rclcpp::ok() && !entry_loc_inited_){
+                // RCLCPP_INFO(this->get_logger(), "Waiting for entry location...");
+            }
+            auto navpts = enu_to_nav({entry_loc_enu_});
+            entry_loc_ = navpts[0];
+            entry_loc_set_ = true;
+        }
+
         void handle_get_route(const std::shared_ptr<GetRoute::Request> request, std::shared_ptr<GetRoute::Response> response){
             RCLCPP_INFO(this->get_logger(), "Received GetRoute request.");
 
+            entry_loc_enu_ = request->point;
+            entry_loc_inited_ = true;
+
+            while(rclcpp::ok() && !entry_loc_set_){
+                // RCLCPP_INFO(this->get_logger(), "Waiting for entry location...");
+            }
+
             // Extract start and end coordinates
-            double start_lat = request->start.latitude;
-            double start_lon = request->start.longitude;
-            double end_lat = request->end.latitude;
-            double end_lon = request->end.longitude;
+            double start_lat = robot_loc_.latitude;
+            double start_lon = robot_loc_.longitude;
+            double end_lat = entry_loc_.latitude;
+            double end_lon = entry_loc_.longitude;
 
             // Construct the OSRM API URL using the public server
             std::ostringstream url_stream;
@@ -58,7 +99,7 @@ class OsrmRouteServiceNode : public rclcpp::Node{
                     << "?geometries=geojson&overview=full";
             std::string url = url_stream.str();
 
-            RCLCPP_DEBUG(this->get_logger(), "OSRM API URL: %s", url.c_str());
+            RCLCPP_INFO(this->get_logger(), "OSRM API URL: %s", url.c_str());
 
             // Initialize CURL
             CURL* curl = curl_easy_init();
@@ -129,7 +170,63 @@ class OsrmRouteServiceNode : public rclcpp::Node{
             }
             // Assign waypoints to response
             response->waypoints = waypoints;
+            response->points = nav_to_enu(waypoints);
             RCLCPP_INFO(this->get_logger(), "Successfully retrieved %zu waypoints.", waypoints.size());
+        }
+
+        std::vector<geometry_msgs::msg::Point> nav_to_enu(std::vector<sensor_msgs::msg::NavSatFix> navpts){
+            RCLCPP_INFO(this->get_logger(), "Converting NavSatFix to ENU");
+            std::vector<geometry_msgs::msg::Point> points;
+            auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
+            for (const auto& point : navpts) {
+                request->gps.push_back(point);
+            }
+            while (!gps2enu_client_->wait_for_service(1s)) {
+                if (!rclcpp::ok()) {
+                    RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+                    return std::vector<geometry_msgs::msg::Point>();
+                }
+                RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
+            }
+            auto result = gps2enu_client_->async_send_request(request);
+            auto getres =  result.get()->enu;
+            for (const auto& point : getres) {
+                geometry_msgs::msg::Point p;
+                p.x = point.position.x;
+                p.y = point.position.y;
+                p.z = point.position.z;
+                points.push_back(p);
+            }
+            return points;
+        }
+
+        std::vector<sensor_msgs::msg::NavSatFix> enu_to_nav(std::vector<geometry_msgs::msg::Pose> enupts){
+            RCLCPP_INFO(this->get_logger(), "Converting ENU to NavSatFix");
+            std::vector<sensor_msgs::msg::NavSatFix> points;
+            auto request = std::make_shared<farmbot_interfaces::srv::Enu2Gps::Request>();
+            for (const auto& point : enupts) {
+                request->enu.push_back(point);
+            }
+            while (!enu2gps_client_->wait_for_service(1s)) {
+                if (!rclcpp::ok()) {
+                    RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
+                    return std::vector<sensor_msgs::msg::NavSatFix>();
+                }
+                RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
+            }
+            auto result = enu2gps_client_->async_send_request(request);
+            // while (rclcpp::ok() && result.wait_for(1s) == std::future_status::timeout) {
+                // RCLCPP_INFO(this->get_logger(), "Waiting for response for ENU to GPS conversion...");
+            // }
+            auto getres =  result.get()->gps;
+            for (const auto& point : getres) {
+                sensor_msgs::msg::NavSatFix p;
+                p.latitude = point.latitude;
+                p.longitude = point.longitude;
+                p.altitude = point.altitude;
+                points.push_back(p);
+            }
+            return points;
         }
 };
 

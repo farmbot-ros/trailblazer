@@ -127,6 +127,9 @@ class GetTheFieldService : public rclcpp::Node {
             }
             // Send the request and wait for the result (blocking call)
             auto result_future = gps2enu_client_->async_send_request(request);
+            while (rclcpp::ok() && result_future.wait_for(1s) == std::future_status::timeout) {
+                RCLCPP_INFO(this->get_logger(), "Waiting for response from GPS2ENU service...");
+            }
             auto result = result_future.get();
             if (!result) {
                 RCLCPP_ERROR(this->get_logger(), "Service call failed.");
