@@ -7,12 +7,12 @@
 #include <string>
 #include <utility>
 #include <chrono>
-#include "farmbot_planner/utils/geojson.hpp"
-#include "farmbot_planner/farmtrax/field.hpp"
-#include "farmbot_planner/farmtrax/swath.hpp"
-#include "farmbot_planner/farmtrax/plan.hpp"
-#include "farmbot_planner/farmtrax/mesh.hpp"
-#include "farmbot_planner/farmtrax/route.hpp"
+#include "farmbot_trailblazer/utils/geojson.hpp"
+#include "farmbot_trailblazer/farmtrax/field.hpp"
+#include "farmbot_trailblazer/farmtrax/swath.hpp"
+#include "farmbot_trailblazer/farmtrax/plan.hpp"
+#include "farmbot_trailblazer/farmtrax/mesh.hpp"
+#include "farmbot_trailblazer/farmtrax/route.hpp"
 #include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -30,7 +30,7 @@
 #include "farmbot_interfaces/msg/swaths.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
-namespace echo = spdlog;
+// namespace echo = spdlog;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 

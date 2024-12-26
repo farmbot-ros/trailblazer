@@ -11,7 +11,7 @@
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_interfaces/srv/get_the_field.hpp"
-#include "farmbot_planner/utils/geojson.hpp"
+#include "farmbot_trailblazer/utils/geojson.hpp"
 #include "geometry_msgs/msg/point.hpp"
 
 using GetTheField = farmbot_interfaces::srv::GetTheField;
@@ -36,7 +36,7 @@ class GetTheFieldService : public rclcpp::Node {
             .automatically_declare_parameters_from_overrides(true)
         ){
 
-            std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_planner");
+            std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_trailblazer");
             std::string geojson_path = package_share_directory + "/config/field.geojson";
 
             geojson_file_ = this->get_parameter_or<std::string>("geojson_file", geojson_path);

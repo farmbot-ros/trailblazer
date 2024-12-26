@@ -15,14 +15,14 @@ def launch_setup(context, *args, **kwargs):
     path_angle = LaunchConfiguration('path_angle').perform(context)
     alternate_freq = LaunchConfiguration('alternate_freq').perform(context)
     calculator = LaunchConfiguration('calculator').perform(context)
-    param_file = os.path.join(get_package_share_directory('farmbot_planner'), 'config', 'params.yaml')
+    param_file = os.path.join(get_package_share_directory('farmbot_trailblazer'), 'config', 'params.yaml')
 
     nodes_array = []
     is_calculator = False if calculator == '0' else True
     # print({'alternate_freq': alternate_freq} if alternate_freq != '' else {})
 
     gen_lines = Node(
-        package='farmbot_planner',
+        package='farmbot_trailblazer',
         executable="gen_lines",
         name='gen_lines',
         namespace=namespace,
@@ -36,7 +36,7 @@ def launch_setup(context, *args, **kwargs):
     if is_calculator: nodes_array.append(gen_lines)
 
     gen_path = Node(
-        package='farmbot_planner',
+        package='farmbot_trailblazer',
         executable="gen_path",
         name='gen_path',
         namespace=namespace,
@@ -48,7 +48,7 @@ def launch_setup(context, *args, **kwargs):
     nodes_array.append(gen_path)
 
     getthe_field = Node(
-        package='farmbot_planner',
+        package='farmbot_trailblazer',
         executable="getthe_field",
         name='getthe_field',
         namespace=namespace,
@@ -60,7 +60,7 @@ def launch_setup(context, *args, **kwargs):
     if is_calculator: nodes_array.append(getthe_field)
 
     goto_field = Node(
-        package='farmbot_planner',
+        package='farmbot_trailblazer',
         executable="goto_field",
         name='goto_field',
         namespace=namespace,
@@ -72,7 +72,7 @@ def launch_setup(context, *args, **kwargs):
     nodes_array.append(goto_field)
 
     to_nav = Node(
-        package='farmbot_planner',
+        package='farmbot_trailblazer',
         executable="to_nav",
         name='to_nav',
         namespace=namespace,
