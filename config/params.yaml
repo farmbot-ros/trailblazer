@@ -10,19 +10,10 @@ gen_lines:
         alternate_freq: 1 # every 1 row
         path_angle: 80.0 # degrees
 
-gen_path:
-    ros__parameters:
-        name: "gen_path"
-
-goto_field:
-    ros__parameters:
-        name: "goto_field"
-        osrm_server_url: "http://router.project-osrm.org"
-
 getthe_field:
     ros__parameters:
         name: "getthe_field"
-        geojson_file: "/home/bresilla/FARMBOT/src/trailblazer/config/field2.geojson"
+        geojson_file: "/home/bresilla/FARMBOT/farmbot-ros/trailblazer/config/field2.geojson"
 
 to_nav:
     ros__parameters:

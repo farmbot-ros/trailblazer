@@ -27,10 +27,7 @@ install(
 )
 
 set(executables
-    # ab_planner
     gen_lines
-    gen_path
-    goto_field
     getthe_field
     to_nav
 )
@@ -84,8 +81,6 @@ include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 find_package(nlohmann_json REQUIRED)
-#find curl
-find_package(CURL REQUIRED)
 
 
 set(dependencies_sys
@@ -94,7 +89,6 @@ set(dependencies_sys
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}
     nlohmann_json::nlohmann_json
-    ${CURL_LIBRARIES}
 )
 
 foreach(executable ${executables})

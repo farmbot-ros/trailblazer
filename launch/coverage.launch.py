@@ -35,18 +35,6 @@ def launch_setup(context, *args, **kwargs):
     )
     if is_calculator: nodes_array.append(gen_lines)
 
-    gen_path = Node(
-        package='farmbot_trailblazer',
-        executable="gen_path",
-        name='gen_path',
-        namespace=namespace,
-        parameters=[
-            yaml.safe_load(open(param_file))['gen_path']['ros__parameters'],
-            yaml.safe_load(open(param_file))['global']['ros__parameters'],
-        ]
-    )
-    nodes_array.append(gen_path)
-
     getthe_field = Node(
         package='farmbot_trailblazer',
         executable="getthe_field",
@@ -58,18 +46,6 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
     if is_calculator: nodes_array.append(getthe_field)
-
-    goto_field = Node(
-        package='farmbot_trailblazer',
-        executable="goto_field",
-        name='goto_field',
-        namespace=namespace,
-        parameters=[
-            yaml.safe_load(open(param_file))['goto_field']['ros__parameters'],
-            yaml.safe_load(open(param_file))['global']['ros__parameters']
-        ]
-    )
-    nodes_array.append(goto_field)
 
     to_nav = Node(
         package='farmbot_trailblazer',
