@@ -33,6 +33,7 @@ set(executables
 )
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -53,6 +54,7 @@ find_package(farmbot_interfaces REQUIRED)
 
 set(dependencies_ros
     rclcpp
+    ament_index_cpp
     std_msgs
     std_srvs
     nav_msgs
