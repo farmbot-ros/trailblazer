@@ -2,10 +2,8 @@ import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 import yaml
-import argparse
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
-from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch.actions import OpaqueFunction
 
@@ -33,7 +31,8 @@ def launch_setup(context, *args, **kwargs):
             {'alternate_freq': int(alternate_freq)} if alternate_freq != '' else {},
         ]
     )
-    if is_calculator: nodes_array.append(gen_lines)
+    if is_calculator:
+        nodes_array.append(gen_lines)
 
     getthe_field = Node(
         package='farmbot_trailblazer',
@@ -45,7 +44,8 @@ def launch_setup(context, *args, **kwargs):
             yaml.safe_load(open(param_file))['global']['ros__parameters']
         ]
     )
-    if is_calculator: nodes_array.append(getthe_field)
+    if is_calculator:
+        nodes_array.append(getthe_field)
 
     to_nav = Node(
         package='farmbot_trailblazer',
@@ -69,10 +69,9 @@ def generate_launch_description():
     calculator = DeclareLaunchArgument('calculator', default_value='0')
 
     return LaunchDescription([
-            namespace_arg,
-            path_angle,
-            alternate_freq,
-            calculator,
-            OpaqueFunction(function = launch_setup)
-        ]
-    )
+        namespace_arg,
+        path_angle,
+        alternate_freq,
+        calculator,
+        OpaqueFunction(function=launch_setup)
+    ])

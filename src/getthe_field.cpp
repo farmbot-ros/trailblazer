@@ -2,6 +2,7 @@
 #include <json/json.h>
 #include <memory>
 #include <rclcpp/qos.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <vector>
@@ -11,7 +12,6 @@
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_trailblazer/utils/geojson.hpp"
 #include "geometry_msgs/msg/point.hpp"
-#include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 
 using GetTheField = farmbot_interfaces::srv::GetTheField;
@@ -47,6 +47,7 @@ class GetTheFieldService : public rclcpp::Node {
         service_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
         rclcpp::QoS qos_profile(10);
+        // auto qos_profile = rmw_qos_profile_t();
 
         // Create the GPS to ENU client, assign it to the client callback group
         gps2enu_client_ =
