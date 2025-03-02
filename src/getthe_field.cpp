@@ -46,8 +46,8 @@ class GetTheFieldService : public rclcpp::Node {
         client_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         service_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
-        rclcpp::QoS qos_profile(10);
-        // auto qos_profile = rmw_qos_profile_t();
+        // rclcpp::QoS qos_profile(10);
+        auto qos_profile = rmw_qos_profile_t();
 
         // Create the GPS to ENU client, assign it to the client callback group
         gps2enu_client_ =

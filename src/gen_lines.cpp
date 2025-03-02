@@ -78,7 +78,7 @@ class FieldProcessorNode : public rclcpp::Node {
 
         // Create publishers
         inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/inner_field", 10);
-        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/outer_field", 10);
+        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/border", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
 
         // Timers
@@ -107,7 +107,7 @@ class FieldProcessorNode : public rclcpp::Node {
             return;
         }
         outer_polygon_publisher_->publish(outer_polygon_);
-        inner_polygon_publisher_->publish(inner_polygon_);
+        // inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
         swaths_publisher_->publish(swaths_msg_);
     }
@@ -120,12 +120,12 @@ class FieldProcessorNode : public rclcpp::Node {
         }
 
         field_.gen_field(points);
-        farmtrax::Field hl = field_.get_buffered(vehicle_width_ * 2.0, farmtrax::BufferType::SHRINK);
+        // farmtrax::Field hl = field_.get_buffered(vehicle_coverage_, farmtrax::BufferType::SHRINK);
         outer_polygon_ = vector2Polygon(field_.get_border_points());
-        inner_polygon_ = vector2Polygon(hl.get_border_points());
+        // inner_polygon_ = vector2Polygon(hl.get_border_points());
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
-        swaths_.gen_swaths(field_, hl, vehicle_coverage_, path_angle_, vehicle_width_);
+        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, vehicle_width_);
         swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 

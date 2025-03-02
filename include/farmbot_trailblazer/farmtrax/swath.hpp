@@ -4,11 +4,11 @@
 #include "field.hpp"
 #include <algorithm>
 #include <boost/geometry.hpp>
-#include <boost/geometry/geometries/segment.hpp>
-#include <boost/geometry/algorithms/intersection.hpp>
+#include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/algorithms/envelope.hpp>
 #include <boost/geometry/algorithms/expand.hpp>
-#include <boost/geometry/algorithms/distance.hpp>
+#include <boost/geometry/algorithms/intersection.hpp>
+#include <boost/geometry/geometries/segment.hpp>
 #include <boost/geometry/index/rtree.hpp>
 
 #include <boost/uuid/uuid.hpp>            // uuid class
@@ -17,13 +17,13 @@
 
 #include "rclcpp/rclcpp.hpp"
 
-#include <vector>
-#include <string>
+#include "spdlog/spdlog.h"
 #include <cmath>
 #include <map>
 #include <queue>
+#include <string>
 #include <utility> // For std::pair
-#include "spdlog/spdlog.h"
+#include <vector>
 namespace echo = spdlog;
 
 namespace farmtrax {
@@ -42,20 +42,16 @@ namespace farmtrax {
     typedef bg::model::multi_polygon<Polygon> Multipolygon;
 
     // Enum class to represent different types of swaths
-    enum class SwathType {
-        LINE,
-        TURN,
-        ROAD
-    };
+    enum class SwathType { LINE, TURN, ROAD };
 
     // Struct to represent each swath, along with its properties
     struct Swath {
-        LineString swath;         // The actual swath line (geometry)
-        std::string uuid;         // A unique identifier for each swath
-        SwathType type;           // The type of swath (LINE, TURN, PATH)
-        double length;            // Length of the swath
+        LineString swath; // The actual swath line (geometry)
+        std::string uuid; // A unique identifier for each swath
+        SwathType type;   // The type of swath (LINE, TURN, PATH)
+        double length;    // Length of the swath
 
-        bool intersects(const Field& field) const {
+        bool intersects(const Field &field) const {
             Polygon fieldPolygon = field.get_polygon();
             return bg::intersects(fieldPolygon, swath);
         }
@@ -66,7 +62,7 @@ namespace farmtrax {
             swath = reversed_swath;
         }
 
-        Swath create_swath(const Point& start, const Point& end, SwathType type, std::string uuid = "") {
+        Swath create_swath(const Point &start, const Point &end, SwathType type, std::string uuid = "") {
             LineString line;
             bg::append(line, start);
             bg::append(line, end);
@@ -80,254 +76,242 @@ namespace farmtrax {
     typedef bgi::rtree<RtreeValue, bgi::quadratic<16>> Rtree;
 
     class Swaths {
-        private:
-            rclcpp::Node::SharedPtr node_;          // ROS 2 node handle
-            std::vector<Swath> swaths_;             // Holds Swath structs
-            Rtree swath_rtree_;                     // R-tree for efficient spatial querying of swaths
+      private:
+        rclcpp::Node::SharedPtr node_; // ROS 2 node handle
+        std::vector<Swath> swaths_;    // Holds Swath structs
+        Rtree swath_rtree_;            // R-tree for efficient spatial querying of swaths
 
-        public:
-            Swaths() = default;
+      public:
+        Swaths() = default;
 
-            // Constructor to initialize with a field and swath width
-            Swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
-                gen_swaths(outer_field, inner_field, swath_width, angle_degrees, inner_offset);
+        // Constructor to initialize with a field and swath width
+        Swaths(const Field &field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
+            gen_swaths(field, swath_width, angle_degrees, inner_offset);
+        }
+
+        void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
+
+        void gen_swaths(const Field &field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
+            generate_swaths(field, swath_width, angle_degrees, inner_offset);
+        }
+
+        // Get the swaths as a vector of Swath structs
+        const std::vector<Swath> &get_swaths() const { return swaths_; }
+
+        // Add a swath to the list of swaths
+        void add_swath(const Swath &swath) { swaths_.push_back(swath); }
+
+        // gange the swath order from last to first
+        void reverse_swaths() { std::reverse(swaths_.begin(), swaths_.end()); }
+
+        // If swath intersects with field
+        bool intersects_field(const Field &field, const Swath &swath) {
+            Polygon fieldPolygon = field.get_polygon();
+            LineString swathLine = swath.swath;
+            return boost::geometry::intersects(fieldPolygon, swathLine);
+        }
+
+        // Query swaths intersecting a given bounding box
+        std::vector<std::size_t> query_swaths(const Box &query_box) const {
+            std::vector<RtreeValue> result_s;
+            swath_rtree_.query(bgi::intersects(query_box), std::back_inserter(result_s));
+
+            std::vector<std::size_t> swath_indices;
+            swath_indices.reserve(result_s.size());
+            for (const auto &val : result_s) {
+                swath_indices.push_back(val.second);
             }
+            return swath_indices;
+        }
 
-            void pass_node(rclcpp::Node::SharedPtr node) {
-                node_ = node;
+        // Find the nearest swath to a given point
+        std::size_t nearest_swath(const Point &point) const {
+            std::vector<RtreeValue> result_s;
+            swath_rtree_.query(bgi::nearest(point, 1), std::back_inserter(result_s));
+
+            if (!result_s.empty()) {
+                return result_s.front().second;
+            } else {
+                throw std::runtime_error("No swaths available.");
             }
+        }
 
-            void gen_swaths(const Field& outer_field, const Field& inner_field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
-                generate_swaths(outer_field, inner_field, swath_width, angle_degrees, inner_offset);
-            }
-
-            // Get the swaths as a vector of Swath structs
-            const std::vector<Swath>& get_swaths() const {
-                return swaths_;
-            }
-
-            // Add a swath to the list of swaths
-            void add_swath(const Swath& swath) {
-                swaths_.push_back(swath);
-            }
-
-            // gange the swath order from last to first
-            void reverse_swaths() {
-                std::reverse(swaths_.begin(), swaths_.end());
-            }
-
-            // If swath intersects with field
-            bool intersects_field(const Field& field, const Swath& swath) {
-                Polygon fieldPolygon = field.get_polygon();
-                LineString swathLine = swath.swath;
-                return boost::geometry::intersects(fieldPolygon, swathLine);
-            }
-
-            // Query swaths intersecting a given bounding box
-            std::vector<std::size_t> query_swaths(const Box& query_box) const {
-                std::vector<RtreeValue> result_s;
-                swath_rtree_.query(bgi::intersects(query_box), std::back_inserter(result_s));
-
-                std::vector<std::size_t> swath_indices;
-                swath_indices.reserve(result_s.size());
-                for (const auto& val : result_s) {
-                    swath_indices.push_back(val.second);
+        // check if two points are connected by a swath
+        bool are_connected(const Point &p1, const Point &p2) {
+            LineString connection = create_connection(p1, p2);
+            for (const auto &swath : swaths_) {
+                if (bg::intersects(connection, swath.swath)) {
+                    return true;
                 }
-                return swath_indices;
             }
+            return false;
+        }
 
-            // Find the nearest swath to a given point
-            std::size_t nearest_swath(const Point& point) const {
-                std::vector<RtreeValue> result_s;
-                swath_rtree_.query(bgi::nearest(point, 1), std::back_inserter(result_s));
-
-                if (!result_s.empty()) {
-                    return result_s.front().second;
-                } else {
-                    throw std::runtime_error("No swaths available.");
+        // create a funtion that takes the generated swaths and divides them into nth goups
+        std::vector<Swaths> divide_swaths(int n) {
+            std::vector<Swaths> divided_swaths;
+            std::vector<Swath> swaths = get_swaths();
+            int num_swaths = swaths.size();
+            int num_swaths_per_group = num_swaths / n;
+            int remainder = num_swaths % n;
+            int start = 0;
+            int end = 0;
+            for (int i = 0; i < n; i++) {
+                end = start + num_swaths_per_group;
+                if (remainder > 0) {
+                    end++;
+                    remainder--;
                 }
+                std::vector<Swath> group_swaths(swaths.begin() + start, swaths.begin() + end);
+                Swaths group_swaths_obj;
+                group_swaths_obj.swaths_ = group_swaths;
+                group_swaths_obj.pass_node(node_);
+                divided_swaths.push_back(group_swaths_obj);
+                start = end;
             }
+            return divided_swaths;
+        }
 
-            //check if two points are connected by a swath
-            bool are_connected(const Point& p1, const Point& p2) {
-                LineString connection = create_connection(p1, p2);
-                for (const auto& swath : swaths_) {
-                    if (bg::intersects(connection, swath.swath)) {
-                        return true;
+      private:
+        // Helper function to generate swaths with a specified angle
+        void generate_swaths(const Field &field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
+            swaths_.clear();
+            swath_rtree_.clear(); // Clear existing entries
+
+            Polygon fieldPolygon = field.get_polygon();
+
+            // Get the bounding box of the field
+            boost::geometry::model::box<Point> boundingBox;
+            boost::geometry::envelope(fieldPolygon, boundingBox);
+
+            // Convert angle from degrees to radians
+            double angle_radians = angle_degrees * M_PI / 180.0;
+
+            // Determine the dimensions of the bounding box
+            double width = boundingBox.max_corner().x() - boundingBox.min_corner().x();
+            double height = boundingBox.max_corner().y() - boundingBox.min_corner().y();
+            double max_dim = std::max(width, height);
+
+            // Starting point and ending point adjusted for angle
+            Point centerPoint((boundingBox.min_corner().x() + boundingBox.max_corner().x()) / 2,
+                              (boundingBox.min_corner().y() + boundingBox.max_corner().y()) / 2);
+
+            // Iterate to generate swaths with a defined offset based on swath width
+            auto new_polygon = fieldPolygon;
+            for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width) {
+                double length = std::max(field.get_width(), field.get_height()) * 2;
+                LineString swathLine = generate_swathine(centerPoint, angle_radians, offset, length);
+                // Clip the swath line to fit within the field polygon
+
+                std::vector<LineString> clipped;
+                boost::geometry::intersection(swathLine, fieldPolygon, clipped);
+                // Keep all valid segments of the swath that intersect the field polygon
+
+                for (const auto &segment : clipped) {
+                    // if lenght is smaller than swath width, then ignore it
+                    if (bg::length(segment) < swath_width) {
+                        continue;
                     }
-                }
-                return false;
-            }
+                    Swath swath; // Create a Swath struct for each segment
+                    swath.swath = segment;
+                    swath.uuid = generate_UUID();       // Generate a unique ID for each swath
+                    swath.type = SwathType::LINE;       // Always mark as LINE here
+                    swath.length = bg::length(segment); // Calculate the length of the swath
+                    swaths_.push_back(swath);
 
-            // create a funtion that takes the generated swaths and divides them into nth goups
-            std::vector<Swaths> divide_swaths(int n) {
-                std::vector<Swaths> divided_swaths;
-                std::vector<Swath> swaths = get_swaths();
-                int num_swaths = swaths.size();
-                int num_swaths_per_group = num_swaths / n;
-                int remainder = num_swaths % n;
-                int start = 0;
-                int end = 0;
-                for (int i = 0; i < n; i++) {
-                    end = start + num_swaths_per_group;
-                    if (remainder > 0) {
-                        end++;
-                        remainder--;
-                    }
-                    std::vector<Swath> group_swaths(swaths.begin() + start, swaths.begin() + end);
-                    Swaths group_swaths_obj;
-                    group_swaths_obj.swaths_ = group_swaths;
-                    group_swaths_obj.pass_node(node_);
-                    divided_swaths.push_back(group_swaths_obj);
-                    start = end;
-                }
-                return divided_swaths;
-            }
+                    insert_point_at_closest_location(new_polygon, segment.front());
+                    insert_point_at_closest_location(new_polygon, segment.back());
 
-        private:
-            // Helper function to generate swaths with a specified angle
-            void generate_swaths(const Field& outer_field_, const Field& inner_field_, double swath_width, double angle_degrees, double inner_offset = 1.0) {
-                swaths_.clear();
-                swath_rtree_.clear(); // Clear existing entries
-
-
-                Field new_field = inner_field_.get_buffered(inner_offset, farmtrax::BufferType::ENLARGE);
-                Polygon fieldPolygon = new_field.get_polygon();
-
-                // Get the bounding box of the field
-                boost::geometry::model::box<Point> boundingBox;
-                boost::geometry::envelope(fieldPolygon, boundingBox);
-
-                // Convert angle from degrees to radians
-                double angle_radians = angle_degrees * M_PI / 180.0;
-
-                // Determine the dimensions of the bounding box
-                double width = boundingBox.max_corner().x() - boundingBox.min_corner().x();
-                double height = boundingBox.max_corner().y() - boundingBox.min_corner().y();
-                double max_dim = std::max(width, height);
-
-                // Starting point and ending point adjusted for angle
-                Point centerPoint((boundingBox.min_corner().x() + boundingBox.max_corner().x()) / 2,
-                                (boundingBox.min_corner().y() + boundingBox.max_corner().y()) / 2);
-
-                // Iterate to generate swaths with a defined offset based on swath width
-                auto new_polygon = fieldPolygon;
-                for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width) {
-                    double length = std::max(outer_field_.get_width(), outer_field_.get_height()) * 2;
-                    LineString swathLine = generate_swathine(centerPoint, angle_radians, offset, length);
-                    // Clip the swath line to fit within the field polygon
-
-                    std::vector<LineString> clipped;
-                    boost::geometry::intersection(swathLine, fieldPolygon, clipped);
-                    // Keep all valid segments of the swath that intersect the field polygon
-
-                    for (const auto& segment : clipped) {
-                        //if lenght is smaller than swath width, then ignore it
-                        if (bg::length(segment) < swath_width) {
-                            continue;
-                        }
-                        Swath swath;  // Create a Swath struct for each segment
-                        swath.swath = segment;
-                        swath.uuid = generate_UUID();  // Generate a unique ID for each swath
-                        swath.type = SwathType::LINE; // Always mark as LINE here
-                        swath.length = bg::length(segment); // Calculate the length of the swath
-                        swaths_.push_back(swath);
-
-                        insert_point_at_closest_location(new_polygon, segment.front());
-                        insert_point_at_closest_location(new_polygon, segment.back());
-
-                        // Insert the swath into the R-tree
-                        Box swath_box;
-                        boost::geometry::envelope(segment, swath_box);
-                        swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
-                    }
+                    // Insert the swath into the R-tree
+                    Box swath_box;
+                    boost::geometry::envelope(segment, swath_box);
+                    swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                 }
             }
+        }
 
-            // Function to generate a line at a certain offset from the center, adjusted for the angle
-            LineString generate_swathine(const Point& center, double angle_radians, double offset, double length) const {
-                LineString swathLine;
+        // Function to generate a line at a certain offset from the center, adjusted for the angle
+        LineString generate_swathine(const Point &center, double angle_radians, double offset, double length) const {
+            LineString swathLine;
 
-                // Calculate the perpendicular offset direction based on the angle
-                double cos_angle = std::cos(angle_radians);
-                double sin_angle = std::sin(angle_radians);
+            // Calculate the perpendicular offset direction based on the angle
+            double cos_angle = std::cos(angle_radians);
+            double sin_angle = std::sin(angle_radians);
 
-                // Calculate the start and end points of the swath line
-                Point newStart(center.x() + (offset * sin_angle) - (length * cos_angle),
-                            center.y() - (offset * cos_angle) - (length * sin_angle));
+            // Calculate the start and end points of the swath line
+            Point newStart(center.x() + (offset * sin_angle) - (length * cos_angle),
+                           center.y() - (offset * cos_angle) - (length * sin_angle));
 
-                Point newEnd(center.x() + (offset * sin_angle) + (length * cos_angle),
-                            center.y() - (offset * cos_angle) + (length * sin_angle));
+            Point newEnd(center.x() + (offset * sin_angle) + (length * cos_angle),
+                         center.y() - (offset * cos_angle) + (length * sin_angle));
 
-                // Add the new start and end points to the swath line
-                swathLine.push_back(newStart);
-                swathLine.push_back(newEnd);
+            // Add the new start and end points to the swath line
+            swathLine.push_back(newStart);
+            swathLine.push_back(newEnd);
 
-                return swathLine;
+            return swathLine;
+        }
+
+        void insert_point_at_closest_location(Polygon &poly, const Point &p) {
+            auto &outer_ring = poly.outer();
+            // Check if the ring is closed (first and last points are the same)
+            bool is_closed = !outer_ring.empty() && bg::equals(outer_ring.front(), outer_ring.back());
+            // Remove the closing point if the ring is closed
+            if (is_closed) {
+                outer_ring.pop_back();
             }
-
-            void insert_point_at_closest_location(Polygon& poly, const Point& p){
-                auto& outer_ring = poly.outer();
-                // Check if the ring is closed (first and last points are the same)
-                bool is_closed = !outer_ring.empty() && bg::equals(outer_ring.front(), outer_ring.back());
-                // Remove the closing point if the ring is closed
-                if (is_closed){
-                    outer_ring.pop_back();
-                }
-                // Variables to keep track of the closest segment
-                double min_distance = std::numeric_limits<double>::max();
-                size_t insert_position = 0; // Position to insert the point
-                // Iterate over the segments of the outer ring
-                for (size_t i = 0; i < outer_ring.size(); ++i){
-                    // Get the current segment
-                    Point p1 = outer_ring[i];
-                    Point p2 = outer_ring[(i + 1) % outer_ring.size()]; // Wrap around for the last segment
-                    bg::model::segment<Point> seg(p1, p2);
-                    // Compute the distance from the point to the segment
-                    double distance = bg::distance(p, seg);
-                    // Update the minimum distance and insertion position if necessary
-                    if (distance < min_distance){
-                        min_distance = distance;
-                        insert_position = i + 1; // Insert after point i
-                    }
-                }
-                // Insert the point at the determined position
-                outer_ring.insert(outer_ring.begin() + insert_position, p);
-                // Close the ring by adding the first point at the end
-                if (outer_ring.size() >= 3){
-                    outer_ring.push_back(outer_ring.front());
-                }
-                // Optional: Correct the polygon to ensure validity (orientation, closure)
-                bg::correct(poly);
-                // Check if the polygon is valid
-                if (!bg::is_valid(poly)){
-                    throw std::runtime_error("Polygon is invalid after insertion.");
+            // Variables to keep track of the closest segment
+            double min_distance = std::numeric_limits<double>::max();
+            size_t insert_position = 0; // Position to insert the point
+            // Iterate over the segments of the outer ring
+            for (size_t i = 0; i < outer_ring.size(); ++i) {
+                // Get the current segment
+                Point p1 = outer_ring[i];
+                Point p2 = outer_ring[(i + 1) % outer_ring.size()]; // Wrap around for the last segment
+                bg::model::segment<Point> seg(p1, p2);
+                // Compute the distance from the point to the segment
+                double distance = bg::distance(p, seg);
+                // Update the minimum distance and insertion position if necessary
+                if (distance < min_distance) {
+                    min_distance = distance;
+                    insert_position = i + 1; // Insert after point i
                 }
             }
-
-            // Function to create a connection between two points
-            LineString create_connection(const Point& p1, const Point& p2) const {
-                LineString connection;
-                connection.push_back(p1);
-                connection.push_back(p2);
-                return connection;
+            // Insert the point at the determined position
+            outer_ring.insert(outer_ring.begin() + insert_position, p);
+            // Close the ring by adding the first point at the end
+            if (outer_ring.size() >= 3) {
+                outer_ring.push_back(outer_ring.front());
             }
-
-            // Function to generate a unique identifier for each swath
-            std::string generate_UUID() const {
-                return boost::uuids::to_string(boost::uuids::random_generator()());
+            // Optional: Correct the polygon to ensure validity (orientation, closure)
+            bg::correct(poly);
+            // Check if the polygon is valid
+            if (!bg::is_valid(poly)) {
+                throw std::runtime_error("Polygon is invalid after insertion.");
             }
+        }
 
-            //function that cheks if swath touches perimeter of the field
-            bool intersects_field(const LineString& swath, const Field& field) {
-                auto edges = field.get_edges();
-                for (const auto& edge : edges) {
-                    if (bg::intersects(swath, edge)) {
-                        return true;
-                    }
+        // Function to create a connection between two points
+        LineString create_connection(const Point &p1, const Point &p2) const {
+            LineString connection;
+            connection.push_back(p1);
+            connection.push_back(p2);
+            return connection;
+        }
+
+        // Function to generate a unique identifier for each swath
+        std::string generate_UUID() const { return boost::uuids::to_string(boost::uuids::random_generator()()); }
+
+        // function that cheks if swath touches perimeter of the field
+        bool intersects_field(const LineString &swath, const Field &field) {
+            auto edges = field.get_edges();
+            for (const auto &edge : edges) {
+                if (bg::intersects(swath, edge)) {
+                    return true;
                 }
-                return false;
             }
+            return false;
+        }
     };
 
 } // namespace farmtrax
