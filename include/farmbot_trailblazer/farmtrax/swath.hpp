@@ -15,16 +15,16 @@
 #include <boost/uuid/uuid_generators.hpp> // generators
 #include <boost/uuid/uuid_io.hpp>         // streaming operators etc.
 
+#include "farmbot_interfaces/msg/polygon_array.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "spdlog/spdlog.h"
 #include <cmath>
+#include <farmbot_interfaces/msg/detail/polygon_array__struct.hpp>
 #include <map>
 #include <queue>
 #include <string>
 #include <utility> // For std::pair
 #include <vector>
-namespace echo = spdlog;
 
 namespace farmtrax {
     namespace bg = boost::geometry;
@@ -79,20 +79,25 @@ namespace farmtrax {
       private:
         rclcpp::Node::SharedPtr node_; // ROS 2 node handle
         std::vector<Swath> swaths_;    // Holds Swath structs
-        Rtree swath_rtree_;            // R-tree for efficient spatial querying of swaths
+        std::vector<Polygon> heardlands_;
+        Rtree swath_rtree_; // R-tree for efficient spatial querying of swaths
+        double colinear_threshold_ = 0.01;
 
       public:
         Swaths() = default;
 
         // Constructor to initialize with a field and swath width
-        Swaths(const Field &field, double swath_width, double angle_degrees) {
-            gen_swaths(field, swath_width, angle_degrees);
-        }
+        // Swaths(const Field &field, double swath_width, double angle_degrees) {
+        //     gen_swaths(field, swath_width, angle_degrees);
+        // }
 
         void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
 
-        void gen_swaths(const Field &field, double swath_width, double angle_degrees) {
-            generate_swaths(field, swath_width, angle_degrees);
+        void gen_swaths(const Field &field, double swath_width, double angle_degrees, int number = 1) {
+            // generate_swaths(field, swath_width, angle_degrees);
+            heardlands_ = generate_headlands(swath_width, field.get_polygon(), number);
+            swaths_ = generate_swaths(heardlands_.back(), swath_width, angle_degrees);
+            // gen_headlands(swath_width, field.get_polygon(), number);
         }
 
         // Get the swaths as a vector of Swath structs
@@ -173,40 +178,75 @@ namespace farmtrax {
         }
 
       private:
-        // Helper function to generate swaths with a specified angle
-        void generate_swaths(const Field &field, double swath_width, double angle_degrees) {
-            swaths_.clear();
-            swath_rtree_.clear(); // Clear existing entries
+        std::vector<Polygon> generate_headlands(double x, Polygon polygon_, int number = 1) const {
+            if (x < 0) {
+                throw std::invalid_argument("Shrink distance must be non-negative.");
+            }
+            std::vector<Polygon> polygon_array;
+            for (int i = 0; i < number; i++) {
+                auto polygon = i == 0 ? polygon_ : polygon_array.back();
+                // Define buffer strategies with straight edges
+                bg::strategy::buffer::distance_symmetric<double> distance_strategy(-x);
+                bg::strategy::buffer::side_straight side_strategy;
+                bg::strategy::buffer::join_miter join_strategy;
+                bg::strategy::buffer::end_flat end_strategy;
+                bg::strategy::buffer::point_square point_strategy;
+                // Perform buffering with negative distance to shrink the polygon
+                Multipolygon result;
+                bg::buffer(polygon, result, distance_strategy, side_strategy, join_strategy, end_strategy,
+                           point_strategy);
+                if (result.empty()) {
+                    throw std::runtime_error("Shrinking resulted in an empty field.");
+                }
+                // Select the largest polygon from the result
+                const Polygon *largest = nullptr;
+                double max_area = -std::numeric_limits<double>::max();
+                for (const auto &poly : result) {
+                    double area = bg::area(poly);
+                    if (area > max_area) {
+                        max_area = area;
+                        largest = &poly;
+                    }
+                }
+                if (!largest) {
+                    throw std::runtime_error("Failed to determine the largest polygon after shrinking.");
+                }
+                Polygon simplifiedPolygon = *largest;
+                remove_colinear_points(simplifiedPolygon, colinear_threshold_);
+                polygon_array.push_back(simplifiedPolygon);
+            }
+            return polygon_array;
+        }
 
+        // Helper function to generate swaths with a specified angle
+        std::vector<Swath> generate_swaths(Polygon &polygon, double swath_width, double angle_degrees) {
+            swath_rtree_.clear(); // Clear existing entries
+            std::vector<Swath> swaths;
+
+            Field field = Field(polygon);
             Polygon fieldPolygon = field.get_polygon();
 
             // Get the bounding box of the field
             boost::geometry::model::box<Point> boundingBox;
             boost::geometry::envelope(fieldPolygon, boundingBox);
-
             // Convert angle from degrees to radians
             double angle_radians = angle_degrees * M_PI / 180.0;
-
             // Determine the dimensions of the bounding box
             double width = boundingBox.max_corner().x() - boundingBox.min_corner().x();
             double height = boundingBox.max_corner().y() - boundingBox.min_corner().y();
             double max_dim = std::max(width, height);
-
             // Starting point and ending point adjusted for angle
             Point centerPoint((boundingBox.min_corner().x() + boundingBox.max_corner().x()) / 2,
                               (boundingBox.min_corner().y() + boundingBox.max_corner().y()) / 2);
-
             // Iterate to generate swaths with a defined offset based on swath width
             auto new_polygon = fieldPolygon;
             for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width) {
                 double length = std::max(field.get_width(), field.get_height()) * 2;
                 LineString swathLine = generate_swathine(centerPoint, angle_radians, offset, length);
                 // Clip the swath line to fit within the field polygon
-
                 std::vector<LineString> clipped;
                 boost::geometry::intersection(swathLine, fieldPolygon, clipped);
                 // Keep all valid segments of the swath that intersect the field polygon
-
                 for (const auto &segment : clipped) {
                     // if lenght is smaller than swath width, then ignore it
                     if (bg::length(segment) < swath_width) {
@@ -217,17 +257,16 @@ namespace farmtrax {
                     swath.uuid = generate_UUID();       // Generate a unique ID for each swath
                     swath.type = SwathType::LINE;       // Always mark as LINE here
                     swath.length = bg::length(segment); // Calculate the length of the swath
-                    swaths_.push_back(swath);
-
+                    swaths.push_back(swath);
                     insert_point_at_closest_location(new_polygon, segment.front());
                     insert_point_at_closest_location(new_polygon, segment.back());
-
                     // Insert the swath into the R-tree
                     Box swath_box;
                     boost::geometry::envelope(segment, swath_box);
                     swath_rtree_.insert(std::make_pair(swath_box, swaths_.size() - 1));
                 }
             }
+            return swaths;
         }
 
         // Function to generate a line at a certain offset from the center, adjusted for the angle

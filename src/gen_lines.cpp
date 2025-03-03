@@ -36,7 +36,6 @@ using namespace std::placeholders;
 
 class FieldProcessorNode : public rclcpp::Node {
   private:
-    double vehicle_width_;
     double vehicle_coverage_;
     int alternate_freq_;
     double path_angle_;
@@ -68,7 +67,6 @@ class FieldProcessorNode : public rclcpp::Node {
         : Node("gen_lines",
                rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(
                    true)) {
-        vehicle_width_ = this->get_parameter_or<double>("vehicle_width", 2.0);
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
         alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
@@ -125,7 +123,7 @@ class FieldProcessorNode : public rclcpp::Node {
         // inner_polygon_ = vector2Polygon(hl.get_border_points());
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
-        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_);
+        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, 3);
         swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 

@@ -99,6 +99,14 @@ namespace farmtrax {
         // Initialize with a list of (x, y) coordinates
         Field(const std::vector<std::pair<double, double>> &coordinates) { gen_field(coordinates); }
 
+        Field(const Polygon &polygon) {
+            std::vector<std::pair<double, double>> points;
+            for (const auto &point : polygon.outer()) {
+                points.emplace_back(point.x(), point.y());
+            }
+            gen_field(points);
+        }
+
         void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
 
         // Set the boundary of the field using a list of (x, y) coordinates
