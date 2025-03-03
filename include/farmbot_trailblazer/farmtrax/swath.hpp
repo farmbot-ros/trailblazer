@@ -109,6 +109,9 @@ namespace farmtrax {
         // gange the swath order from last to first
         void reverse_swaths() { std::reverse(swaths_.begin(), swaths_.end()); }
 
+        // get the heardlands
+        const std::vector<Polygon> &get_heardlands() const { return heardlands_; }
+
         // If swath intersects with field
         bool intersects_field(const Field &field, const Swath &swath) {
             Polygon fieldPolygon = field.get_polygon();

@@ -17,6 +17,7 @@
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include "farmbot_interfaces/msg/polygon_array.hpp"
 #include "farmbot_interfaces/msg/segment.hpp"
 #include "farmbot_interfaces/msg/segments.hpp"
 #include "farmbot_interfaces/msg/swath.hpp"
@@ -49,7 +50,7 @@ class FieldProcessorNode : public rclcpp::Node {
     farmtrax::Plan plan_;
 
     geometry_msgs::msg::PolygonStamped outer_polygon_;
-    geometry_msgs::msg::PolygonStamped inner_polygon_;
+    farmbot_interfaces::msg::PolygonArray headlands_;
     visualization_msgs::msg::MarkerArray field_arrows_;
 
     rclcpp::TimerBase::SharedPtr planner_timer_;
@@ -57,10 +58,10 @@ class FieldProcessorNode : public rclcpp::Node {
 
     farmbot_interfaces::msg::Swaths swaths_msg_;
     rclcpp::Publisher<farmbot_interfaces::msg::Swaths>::SharedPtr swaths_publisher_;
+    rclcpp::Publisher<farmbot_interfaces::msg::PolygonArray>::SharedPtr headlands_publisher_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_publisher_;
-    rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr border;
 
   public:
     FieldProcessorNode()
@@ -75,8 +76,7 @@ class FieldProcessorNode : public rclcpp::Node {
         get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field");
 
         // Create publishers
-        inner_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/inner_field", 10);
-        outer_polygon_publisher_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/border", 10);
+        border = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/border", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
 
         // Timers
@@ -84,6 +84,7 @@ class FieldProcessorNode : public rclcpp::Node {
 
         // Swaths publisher
         swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("/pln/swaths", 10);
+        headlands_publisher_ = this->create_publisher<farmbot_interfaces::msg::PolygonArray>("/pln/heardlands", 10);
 
         // Namespace
         namespace_ = this->get_namespace();
@@ -104,7 +105,7 @@ class FieldProcessorNode : public rclcpp::Node {
         if (!planner_initialized_) {
             return;
         }
-        outer_polygon_publisher_->publish(outer_polygon_);
+        border->publish(outer_polygon_);
         // inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
         swaths_publisher_->publish(swaths_msg_);
@@ -118,15 +119,15 @@ class FieldProcessorNode : public rclcpp::Node {
         }
 
         field_.gen_field(points);
-        // farmtrax::Field hl = field_.get_buffered(vehicle_coverage_, farmtrax::BufferType::SHRINK);
         outer_polygon_ = vector2Polygon(field_.get_border_points());
-        // inner_polygon_ = vector2Polygon(hl.get_border_points());
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
         swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, 3);
+
         swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
-
+        auto headlands_ = swaths_.get_heardlands();
+        headlands_publisher_->publish(vector2PolygonArray(headlands_));
         plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
         RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);
 
@@ -195,6 +196,23 @@ class FieldProcessorNode : public rclcpp::Node {
             polygon.polygon.points.push_back(p);
         }
         return polygon;
+    }
+
+    farmbot_interfaces::msg::PolygonArray vector2PolygonArray(const std::vector<farmtrax::Polygon> &polygons) {
+        farmbot_interfaces::msg::PolygonArray polygon_array;
+        for (const auto &polygon : polygons) {
+            geometry_msgs::msg::PolygonStamped polygon_stamped;
+            polygon_stamped.header.frame_id = namespace_ + "/map";
+            polygon_stamped.header.stamp = rclcpp::Clock().now();
+            for (const auto &point : polygon.outer()) {
+                geometry_msgs::msg::Point32 p;
+                p.x = point.x();
+                p.y = point.y();
+                polygon_stamped.polygon.points.push_back(p);
+            }
+            polygon_array.polygons.push_back(polygon_stamped);
+        }
+        return polygon_array;
     }
 
     visualization_msgs::msg::MarkerArray vector2ArrowsColor(const std::vector<farmtrax::Swath> &swaths) {
