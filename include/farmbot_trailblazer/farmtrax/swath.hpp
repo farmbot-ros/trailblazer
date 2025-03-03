@@ -230,40 +230,48 @@ namespace farmtrax {
             Field field = Field(polygon);
             Polygon fieldPolygon = field.get_polygon();
 
-            // Get the bounding box of the field
-            boost::geometry::model::box<Point> boundingBox;
-            boost::geometry::envelope(fieldPolygon, boundingBox);
+            // Get the **rotated bounding box**
+            Polygon rotatedBoundingBox = get_rotated_bounding_box(fieldPolygon);
+
             // Convert angle from degrees to radians
             double angle_radians = angle_degrees * M_PI / 180.0;
-            // Determine the dimensions of the bounding box
-            double width = boundingBox.max_corner().x() - boundingBox.min_corner().x();
-            double height = boundingBox.max_corner().y() - boundingBox.min_corner().y();
-            double max_dim = std::max(width, height);
-            // Starting point and ending point adjusted for angle
-            Point centerPoint((boundingBox.min_corner().x() + boundingBox.max_corner().x()) / 2,
-                              (boundingBox.min_corner().y() + boundingBox.max_corner().y()) / 2);
+
+            // Compute the center of the rotated bounding box
+            Point centerPoint;
+            boost::geometry::centroid(rotatedBoundingBox, centerPoint);
+
+            // Get the maximum dimensions of the rotated bounding box
+            auto &outer = rotatedBoundingBox.outer();
+            double width = boost::geometry::distance(outer[0], outer[1]);  // Width of rotated box
+            double height = boost::geometry::distance(outer[1], outer[2]); // Height of rotated box
+            double max_dim = std::hypot(width, height);                    // Use diagonal length for full coverage
+
             // Iterate to generate swaths with a defined offset based on swath width
             auto new_polygon = fieldPolygon;
-            for (double offset = -max_dim / 2; offset <= max_dim / 2; offset += swath_width) {
-                double length = std::max(field.get_width(), field.get_height()) * 2;
+            for (double offset = -max_dim; offset <= max_dim; offset += swath_width) {
+                double length = max_dim * 2; // Extend to ensure full coverage
                 LineString swathLine = generate_swathine(centerPoint, angle_radians, offset, length);
+
                 // Clip the swath line to fit within the field polygon
                 std::vector<LineString> clipped;
                 boost::geometry::intersection(swathLine, fieldPolygon, clipped);
+
                 // Keep all valid segments of the swath that intersect the field polygon
                 for (const auto &segment : clipped) {
-                    // if lenght is smaller than swath width, then ignore it
-                    if (bg::length(segment) < swath_width) {
-                        continue;
+                    if (boost::geometry::length(segment) < swath_width) {
+                        continue; // Ignore very short swaths
                     }
-                    Swath swath; // Create a Swath struct for each segment
+                    Swath swath;
                     swath.swath = segment;
-                    swath.uuid = generate_UUID();       // Generate a unique ID for each swath
-                    swath.type = SwathType::LINE;       // Always mark as LINE here
-                    swath.length = bg::length(segment); // Calculate the length of the swath
+                    swath.uuid = generate_UUID(); // Generate unique ID
+                    swath.type = SwathType::LINE;
+                    swath.length = boost::geometry::length(segment);
+
                     swaths.push_back(swath);
+
                     insert_point_at_closest_location(new_polygon, segment.front());
                     insert_point_at_closest_location(new_polygon, segment.back());
+
                     // Insert the swath into the R-tree
                     Box swath_box;
                     boost::geometry::envelope(segment, swath_box);
@@ -354,6 +362,13 @@ namespace farmtrax {
                 }
             }
             return false;
+        }
+
+        Polygon get_rotated_bounding_box(const Polygon &polygon) {
+            Polygon hullPolygon;
+            boost::geometry::convex_hull(polygon, hullPolygon);
+            boost::geometry::correct(hullPolygon); // Ensure a valid polygon
+            return hullPolygon;
         }
     };
 
