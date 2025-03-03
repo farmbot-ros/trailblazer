@@ -83,8 +83,8 @@ class FieldProcessorNode : public rclcpp::Node {
         planner_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::planner_timer_cb, this));
 
         // Swaths publisher
-        swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("/pln/swaths", 10);
-        headlands_publisher_ = this->create_publisher<farmbot_interfaces::msg::PolygonArray>("/pln/heardlands", 10);
+        swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("pln/swaths", 10);
+        headlands_publisher_ = this->create_publisher<farmbot_interfaces::msg::PolygonArray>("pln/headlands", 10);
 
         // Namespace
         namespace_ = this->get_namespace();
@@ -109,6 +109,7 @@ class FieldProcessorNode : public rclcpp::Node {
         // inner_polygon_publisher_->publish(inner_polygon_);
         field_arrows_pub_->publish(field_arrows_);
         swaths_publisher_->publish(swaths_msg_);
+        headlands_publisher_->publish(headlands_);
     }
 
     void gen_swaths() {
@@ -126,8 +127,7 @@ class FieldProcessorNode : public rclcpp::Node {
 
         swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
-        auto headlands_ = swaths_.get_heardlands();
-        headlands_publisher_->publish(vector2PolygonArray(headlands_));
+        headlands_ = vector2PolygonArray(swaths_.get_heardlands());
         plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
         RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);
 
