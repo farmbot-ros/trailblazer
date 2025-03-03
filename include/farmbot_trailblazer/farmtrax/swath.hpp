@@ -85,14 +85,14 @@ namespace farmtrax {
         Swaths() = default;
 
         // Constructor to initialize with a field and swath width
-        Swaths(const Field &field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
-            gen_swaths(field, swath_width, angle_degrees, inner_offset);
+        Swaths(const Field &field, double swath_width, double angle_degrees) {
+            gen_swaths(field, swath_width, angle_degrees);
         }
 
         void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
 
-        void gen_swaths(const Field &field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
-            generate_swaths(field, swath_width, angle_degrees, inner_offset);
+        void gen_swaths(const Field &field, double swath_width, double angle_degrees) {
+            generate_swaths(field, swath_width, angle_degrees);
         }
 
         // Get the swaths as a vector of Swath structs
@@ -174,7 +174,7 @@ namespace farmtrax {
 
       private:
         // Helper function to generate swaths with a specified angle
-        void generate_swaths(const Field &field, double swath_width, double angle_degrees, double inner_offset = 1.0) {
+        void generate_swaths(const Field &field, double swath_width, double angle_degrees) {
             swaths_.clear();
             swath_rtree_.clear(); // Clear existing entries
 

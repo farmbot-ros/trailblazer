@@ -125,7 +125,7 @@ class FieldProcessorNode : public rclcpp::Node {
         // inner_polygon_ = vector2Polygon(hl.get_border_points());
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
-        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, vehicle_width_);
+        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_);
         swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
 
