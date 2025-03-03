@@ -81,7 +81,7 @@ namespace farmtrax {
         std::vector<Swath> swaths_;    // Holds Swath structs
         std::vector<Polygon> heardlands_;
         Rtree swath_rtree_; // R-tree for efficient spatial querying of swaths
-        double colinear_threshold_ = 0.01;
+        double colinear_threshold_ = 0.0001;
 
       public:
         Swaths() = default;
@@ -192,6 +192,7 @@ namespace farmtrax {
                 bg::strategy::buffer::distance_symmetric<double> distance_strategy(-x);
                 bg::strategy::buffer::side_straight side_strategy;
                 bg::strategy::buffer::join_miter join_strategy;
+                // bg::strategy::buffer::join_round join_strategy;
                 bg::strategy::buffer::end_flat end_strategy;
                 bg::strategy::buffer::point_square point_strategy;
                 // Perform buffering with negative distance to shrink the polygon
