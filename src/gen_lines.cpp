@@ -39,6 +39,7 @@ class FieldProcessorNode : public rclcpp::Node {
   private:
     double vehicle_coverage_;
     int alternate_freq_;
+    int num_robots_;
     double path_angle_;
 
     bool planner_initialized_ = false;
@@ -71,18 +72,20 @@ class FieldProcessorNode : public rclcpp::Node {
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
         alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
+        num_robots_ = this->get_parameter_or<int>("num_robots", 1);
+        RCLCPP_INFO(this->get_logger(), "number of robots: %i", num_robots_);
 
         // Create the service clients
         get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field");
 
         // Create publishers
-        border = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/border", 10);
         field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
 
         // Timers
         planner_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::planner_timer_cb, this));
 
         // Swaths publisher
+        border = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/border", 10);
         swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("pln/swaths", 10);
         headlands_publisher_ = this->create_publisher<farmbot_interfaces::msg::PolygonArray>("pln/headlands", 10);
 
@@ -123,7 +126,7 @@ class FieldProcessorNode : public rclcpp::Node {
         outer_polygon_ = vector2Polygon(field_.get_border_points());
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
-        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, 3);
+        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, num_robots_);
 
         swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());

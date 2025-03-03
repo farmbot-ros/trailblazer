@@ -13,6 +13,7 @@ def launch_setup(context, *args, **kwargs):
     path_angle = LaunchConfiguration('path_angle').perform(context)
     alternate_freq = LaunchConfiguration('alternate_freq').perform(context)
     calculator = LaunchConfiguration('calculator').perform(context)
+    num_robots = LaunchConfiguration('num_robots').perform(context)
     param_file = os.path.join(get_package_share_directory('farmbot_trailblazer'), 'config', 'params.yaml')
 
     nodes_array = []
@@ -27,6 +28,7 @@ def launch_setup(context, *args, **kwargs):
         parameters=[
             yaml.safe_load(open(param_file))['gen_lines']['ros__parameters'],
             yaml.safe_load(open(param_file))['global']['ros__parameters'],
+            {'num_robots': int(num_robots)},
             {'path_angle': float(path_angle)} if path_angle != '' else {},
             {'alternate_freq': int(alternate_freq)} if alternate_freq != '' else {},
         ]
@@ -67,11 +69,13 @@ def generate_launch_description():
     path_angle = DeclareLaunchArgument('path_angle', default_value='')
     alternate_freq = DeclareLaunchArgument('alternate_freq', default_value='')
     calculator = DeclareLaunchArgument('calculator', default_value='0')
+    num_robots = DeclareLaunchArgument('num_robots', default_value='1')
 
     return LaunchDescription([
         namespace_arg,
         path_angle,
         alternate_freq,
         calculator,
+        num_robots,
         OpaqueFunction(function=launch_setup)
     ])

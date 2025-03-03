@@ -13,7 +13,7 @@ gen_lines:
 getthe_field:
     ros__parameters:
         name: "getthe_field"
-        geojson_file: "/doc/code/farmbot/src/trailblazer/config/field2.geojson"
+        geojson_file: "/doc/code/farmbot/src/trailblazer/config/field3.geojson"
 
 to_nav:
     ros__parameters:
