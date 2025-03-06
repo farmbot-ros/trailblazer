@@ -72,15 +72,15 @@ class FieldProcessorNode : public rclcpp::Node {
         RCLCPP_INFO(this->get_logger(), "swath frequency: %i", alternate_freq_);
 
         // Create the service clients
-        get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field");
+        get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("/field/get_field");
 
         // Timers
         planner_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::planner_timer_cb, this));
 
         // Swaths publisher
-        border = this->create_publisher<geometry_msgs::msg::PolygonStamped>("pln/border", 10);
-        swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("pln/swaths", 10);
-        headlands_publisher_ = this->create_publisher<farmbot_interfaces::msg::PolygonArray>("pln/headlands", 10);
+        border = this->create_publisher<geometry_msgs::msg::PolygonStamped>("/field/border", 10);
+        swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Swaths>("/field/swaths", 10);
+        headlands_publisher_ = this->create_publisher<farmbot_interfaces::msg::PolygonArray>("/field/headlands", 10);
 
         // Namespace
         namespace_ = this->get_namespace();

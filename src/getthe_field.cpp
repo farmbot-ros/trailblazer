@@ -54,7 +54,7 @@ class GetTheFieldService : public rclcpp::Node {
             this->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu", qos_profile, client_callback_group_);
 
         // Create the service, assign it to the service callback group
-        service_ = this->create_service<GetTheField>("pln/get_field",
+        service_ = this->create_service<GetTheField>("/field/get_field",
                                                      std::bind(&GetTheFieldService::handle_get_the_field, this, _1, _2),
                                                      qos_profile, service_callback_group_);
 
