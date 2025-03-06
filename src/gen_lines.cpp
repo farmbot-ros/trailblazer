@@ -39,7 +39,6 @@ class FieldProcessorNode : public rclcpp::Node {
   private:
     double vehicle_coverage_;
     int alternate_freq_;
-    int num_robots_;
     double path_angle_;
 
     bool planner_initialized_ = false;
@@ -52,7 +51,6 @@ class FieldProcessorNode : public rclcpp::Node {
 
     geometry_msgs::msg::PolygonStamped outer_polygon_;
     farmbot_interfaces::msg::PolygonArray headlands_;
-    visualization_msgs::msg::MarkerArray field_arrows_;
 
     rclcpp::TimerBase::SharedPtr planner_timer_;
     rclcpp::Client<farmbot_interfaces::srv::GetTheField>::SharedPtr get_the_field_client_;
@@ -60,8 +58,6 @@ class FieldProcessorNode : public rclcpp::Node {
     farmbot_interfaces::msg::Swaths swaths_msg_;
     rclcpp::Publisher<farmbot_interfaces::msg::Swaths>::SharedPtr swaths_publisher_;
     rclcpp::Publisher<farmbot_interfaces::msg::PolygonArray>::SharedPtr headlands_publisher_;
-
-    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr field_arrows_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr border;
 
   public:
@@ -70,16 +66,13 @@ class FieldProcessorNode : public rclcpp::Node {
                rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(
                    true)) {
         vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
+        // Alternate frequency is the number of robots in the swath
         alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = this->get_parameter_or<double>("path_angle", 90);
-        num_robots_ = this->get_parameter_or<int>("num_robots", 1);
-        RCLCPP_INFO(this->get_logger(), "number of robots: %i", num_robots_);
+        RCLCPP_INFO(this->get_logger(), "swath frequency: %i", alternate_freq_);
 
         // Create the service clients
         get_the_field_client_ = this->create_client<farmbot_interfaces::srv::GetTheField>("pln/get_field");
-
-        // Create publishers
-        field_arrows_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("pln/arrow_swath", 10);
 
         // Timers
         planner_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::planner_timer_cb, this));
@@ -110,7 +103,6 @@ class FieldProcessorNode : public rclcpp::Node {
         }
         border->publish(outer_polygon_);
         // inner_polygon_publisher_->publish(inner_polygon_);
-        field_arrows_pub_->publish(field_arrows_);
         swaths_publisher_->publish(swaths_msg_);
         headlands_publisher_->publish(headlands_);
     }
@@ -123,19 +115,19 @@ class FieldProcessorNode : public rclcpp::Node {
         }
 
         field_.gen_field(points);
-        outer_polygon_ = vector2Polygon(field_.get_border_points());
+        outer_polygon_ = vec_polygon(field_.get_border_points());
         RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
 
-        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, num_robots_);
+        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, alternate_freq_);
 
         swaths_.reverse_swaths();
         RCLCPP_INFO(this->get_logger(), "Swaths generated: %lu", swaths_.get_swaths().size());
-        headlands_ = vector2PolygonArray(swaths_.get_heardlands());
+        headlands_ = vec_polygon_array(swaths_.get_heardlands());
         plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
         RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);
 
         for (unsigned long i = 0; i < plan_.get_swaths_vec().size(); i++) {
-            auto temp_swath_msg = swath2SwathMsg(plan_.get_swaths_vec()[i], "robot" + std::to_string(i));
+            auto temp_swath_msg = gen_swath_msg(plan_.get_swaths_vec()[i], "robot" + std::to_string(i));
             swaths_msg_.swaths.insert(swaths_msg_.swaths.end(), temp_swath_msg.swaths.begin(),
                                       temp_swath_msg.swaths.end());
         }
@@ -144,11 +136,9 @@ class FieldProcessorNode : public rclcpp::Node {
         for (const auto &swath : plan_.get_swaths_vec()) {
             flat_swaths.insert(flat_swaths.end(), swath.begin(), swath.end());
         }
-        field_arrows_ = vector2ArrowsColor(flat_swaths);
-        planner_initialized_ = true;
     }
 
-    farmbot_interfaces::msg::Swaths swath2SwathMsg(const std::vector<farmtrax::Swath> &swaths, std::string robot) {
+    farmbot_interfaces::msg::Swaths gen_swath_msg(const std::vector<farmtrax::Swath> &swaths, std::string robot) {
         farmbot_interfaces::msg::Swaths swaths_msg;
         for (const auto &swath : swaths) {
             farmbot_interfaces::msg::Swath swath_msg;
@@ -188,7 +178,7 @@ class FieldProcessorNode : public rclcpp::Node {
         return points;
     }
 
-    geometry_msgs::msg::PolygonStamped vector2Polygon(const std::vector<std::pair<double, double>> &points) {
+    geometry_msgs::msg::PolygonStamped vec_polygon(const std::vector<std::pair<double, double>> &points) {
         geometry_msgs::msg::PolygonStamped polygon;
         polygon.header.frame_id = namespace_ + "/map";
         polygon.header.stamp = rclcpp::Clock().now();
@@ -201,7 +191,7 @@ class FieldProcessorNode : public rclcpp::Node {
         return polygon;
     }
 
-    farmbot_interfaces::msg::PolygonArray vector2PolygonArray(const std::vector<farmtrax::Polygon> &polygons) {
+    farmbot_interfaces::msg::PolygonArray vec_polygon_array(const std::vector<farmtrax::Polygon> &polygons) {
         farmbot_interfaces::msg::PolygonArray polygon_array;
         for (const auto &polygon : polygons) {
             geometry_msgs::msg::PolygonStamped polygon_stamped;
@@ -217,47 +207,6 @@ class FieldProcessorNode : public rclcpp::Node {
         }
         return polygon_array;
     }
-
-    visualization_msgs::msg::MarkerArray vector2ArrowsColor(const std::vector<farmtrax::Swath> &swaths) {
-        visualization_msgs::msg::MarkerArray markers;
-        int id = 0;
-        int num_swaths = swaths.size();
-        for (const auto &swath : swaths) {
-            visualization_msgs::msg::Marker arrow;
-            arrow.header.frame_id = namespace_ + "/map";
-            arrow.header.stamp = rclcpp::Clock().now();
-            arrow.ns = "swath_arrows";
-            arrow.id = id++;
-            arrow.type = visualization_msgs::msg::Marker::ARROW;
-            arrow.action = visualization_msgs::msg::Marker::ADD;
-            arrow.scale.x = 0.2; // Shaft diameter
-            arrow.scale.y = 1;   // Head diameter
-            arrow.scale.z = 2.0; // Head length
-
-            float ratio = static_cast<float>(id) / num_swaths;
-            if (ratio < 0.5) {
-                arrow.color.r = 1.0f - 2.0f * ratio;
-                arrow.color.g = 0.5f + 1.0f * ratio;
-                arrow.color.b = 2.0f * ratio;
-            } else {
-                arrow.color.r = 2.0f * (ratio - 0.5f);
-                arrow.color.g = 1.0f - 2.0f * (ratio - 0.5f);
-                arrow.color.b = 1.0f;
-            }
-            arrow.color.a = 1.0f;
-            arrow.lifetime = rclcpp::Duration::from_seconds(0);
-            geometry_msgs::msg::Point p1;
-            p1.x = swath.swath[0].x();
-            p1.y = swath.swath[0].y();
-            geometry_msgs::msg::Point p2;
-            p2.x = swath.swath[1].x();
-            p2.y = swath.swath[1].y();
-            arrow.points.push_back(p1);
-            arrow.points.push_back(p2);
-            markers.markers.push_back(arrow);
-        }
-        return markers;
-    }
 };
 
 int main(int argc, char *argv[]) {
@@ -269,7 +218,7 @@ int main(int argc, char *argv[]) {
         executor.add_node(node);
         executor.spin();
     } catch (const std::exception &e) {
-        RCLCPP_ERROR(node->get_logger(), e.what());
+        RCLCPP_ERROR(node->get_logger(), "Could not spin executor: %s", e.what());
     }
     rclcpp::shutdown();
     return 0;

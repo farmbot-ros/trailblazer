@@ -1,45 +1,43 @@
-#include "rclcpp/rclcpp.hpp"
-#include "nav_msgs/msg/path.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/point.hpp"
 #include "geometry_msgs/msg/pose.hpp"
-#include "geometry_msgs/msg/point.hpp"
-#include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/quaternion.hpp"
-#include "geometry_msgs/msg/point.hpp"
-#include "sensor_msgs/msg/nav_sat_fix.hpp"
-#include "nav_msgs/msg/odometry.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 #include "message_filters/subscriber.h"
-#include "message_filters/synchronizer.h"
 #include "message_filters/sync_policies/approximate_time.h"
+#include "message_filters/synchronizer.h"
+#include "nav_msgs/msg/odometry.hpp"
+#include "nav_msgs/msg/path.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/nav_sat_fix.hpp"
 
-#include "farmbot_interfaces/action/waypoints.hpp"
+#include "diagnostic_msgs/msg/diagnostic_status.hpp"
+#include "diagnostic_updater/diagnostic_updater.hpp"
 #include "farmbot_interfaces/action/control.hpp"
+#include "farmbot_interfaces/action/waypoints.hpp"
 #include "farmbot_interfaces/srv/trigger.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "std_srvs/srv/trigger.hpp"
-#include "diagnostic_updater/diagnostic_updater.hpp"
-#include "diagnostic_msgs/msg/diagnostic_status.hpp"
 
-#include <farmbot_interfaces/action/detail/waypoints__struct.hpp>
-#include "farmbot_interfaces/msg/waypoint.hpp"
 #include "farmbot_interfaces/msg/segment.hpp"
 #include "farmbot_interfaces/msg/segments.hpp"
+#include "farmbot_interfaces/msg/waypoint.hpp"
 #include "farmbot_interfaces/srv/go_to_field.hpp"
+#include <farmbot_interfaces/action/detail/waypoints__struct.hpp>
 #include <geometry_msgs/msg/detail/pose__struct.hpp>
 #include <iostream>
-#include <rclcpp_action/server_goal_handle.hpp>
-#include <thread>
 #include <mutex>
+#include <rclcpp_action/server_goal_handle.hpp>
 #include <string>
+#include <thread>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 using Trigger = farmbot_interfaces::srv::Trigger;
 
-
 class Navigator : public rclcpp::Node {
-private:
+  private:
     std::string namespace_;
     farmbot_interfaces::msg::Waypoints mission_;
     bool gotofield_;
@@ -64,12 +62,12 @@ private:
     diagnostic_msgs::msg::DiagnosticStatus status;
     rclcpp::TimerBase::SharedPtr diagnostic_timer_;
 
-public:
-    Navigator() : Node("to_nav",
-        rclcpp::NodeOptions()
-        .allow_undeclared_parameters(true)
-        .automatically_declare_parameters_from_overrides(true)
-    ), updater_(this) {
+  public:
+    Navigator()
+        : Node("to_nav",
+               rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(
+                   true)),
+          updater_(this) {
         gotofield_ = this->get_parameter_or<bool>("gotofield", false);
 
         status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
@@ -80,7 +78,8 @@ public:
         // Service client
         goto_field_client_ = this->create_client<farmbot_interfaces::srv::GoToField>("pln/get_route");
         // Subscriber
-        segments_sub_ = this->create_subscription<farmbot_interfaces::msg::Segments>("pln/segments", 10, std::bind(&Navigator::segments_callback, this, _1));
+        segments_sub_ = this->create_subscription<farmbot_interfaces::msg::Segments>(
+            "pln/segments", 10, std::bind(&Navigator::segments_callback, this, _1));
 
         namespace_ = this->get_namespace();
         if (!namespace_.empty() && namespace_[0] == '/') {
@@ -93,14 +92,10 @@ public:
         diagnostic_timer_ = this->create_wall_timer(1s, std::bind(&Navigator::diagnostic_callback, this));
     }
 
-private:
-    void diagnostic_callback() {
-        updater_.force_update();
-    }
+  private:
+    void diagnostic_callback() { updater_.force_update(); }
 
-    void check_system(diagnostic_updater::DiagnosticStatusWrapper &stat) {
-        stat.summary(status.level, status.message);
-    }
+    void check_system(diagnostic_updater::DiagnosticStatusWrapper &stat) { stat.summary(status.level, status.message); }
 
     void segments_callback(const farmbot_interfaces::msg::Segments::SharedPtr msg) {
         segments_ = *msg;
@@ -118,7 +113,7 @@ private:
     void send_waypoints_goal() {
         nav_msgs::msg::Path path;
         geometry_msgs::msg::PoseStamped pose_stamped;
-        for (int i = 0; i < segments_.segments.size(); i += 1) {
+        for (uint i = 0; i < segments_.segments.size(); i += 1) {
             pose_stamped.pose = segments_.segments[i].origin.pose;
             path.poses.push_back(pose_stamped);
             pose_stamped.pose = segments_.segments[i].destination.pose;
@@ -131,7 +126,7 @@ private:
         auto goal_msg = farmbot_interfaces::action::Waypoints::Goal();
         // Convert nav_msgs::msg::Path to farmbot_interfaces::msg::Waypoints
         mission_.header = path.header;
-        for (const auto& pose_stamped : path.poses) {
+        for (const auto &pose_stamped : path.poses) {
             farmbot_interfaces::msg::Waypoint waypoint;
             waypoint.header = pose_stamped.header;
             waypoint.pose = pose_stamped.pose;
@@ -149,7 +144,6 @@ private:
         auto future_goal_handle = control_client_->async_send_goal(goal_msg, send_goal_options);
     }
 
-
     void go_to_field(geometry_msgs::msg::Pose point) {
         auto request = std::make_shared<farmbot_interfaces::srv::GoToField::Request>();
         request->point = point;
@@ -163,8 +157,8 @@ private:
         while (rclcpp::ok() && result.wait_for(1s) == std::future_status::timeout) {
             RCLCPP_INFO(this->get_logger(), "Waiting for response for go to field...");
         }
-        auto points =  result.get()->points;
-        for (int i = 0; i < points.size(); i += 1) {
+        auto points = result.get()->points;
+        for (uint i = 0; i < points.size(); i += 1) {
             farmbot_interfaces::msg::Waypoint waypoint;
             waypoint.pose.position = points[i];
             waypoint.uuid.data = "";
@@ -172,7 +166,8 @@ private:
         }
     }
 
-    void goal_response_callback(rclcpp_action::ClientGoalHandle<farmbot_interfaces::action::Waypoints>::SharedPtr goal_handle) {
+    void goal_response_callback(
+        rclcpp_action::ClientGoalHandle<farmbot_interfaces::action::Waypoints>::SharedPtr goal_handle) {
         if (!goal_handle) {
             RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
             status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
@@ -186,37 +181,39 @@ private:
     }
 
     void feedback_callback(rclcpp_action::ClientGoalHandle<farmbot_interfaces::action::Waypoints>::SharedPtr,
-        const std::shared_ptr<const farmbot_interfaces::action::Waypoints::Feedback> feedback) {
+                           const std::shared_ptr<const farmbot_interfaces::action::Waypoints::Feedback> feedback) {
         RCLCPP_INFO_ONCE(this->get_logger(), "Received feedback");
         // Optionally update diagnostic status or other variables
     }
 
-    void result_callback(const rclcpp_action::ClientGoalHandle<farmbot_interfaces::action::Waypoints>::WrappedResult & result) {
+    void result_callback(
+        const rclcpp_action::ClientGoalHandle<farmbot_interfaces::action::Waypoints>::WrappedResult &result) {
         switch (result.code) {
-            case rclcpp_action::ResultCode::SUCCEEDED:
-                RCLCPP_INFO(this->get_logger(), "Goal succeeded");
-                status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-                status.message = "Goal succeeded";
-                break;
-            case rclcpp_action::ResultCode::ABORTED:
-                RCLCPP_INFO(this->get_logger(), "Goal was aborted");
-                status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-                status.message = "Goal aborted";
-                break;
-            case rclcpp_action::ResultCode::CANCELED:
-                RCLCPP_INFO(this->get_logger(), "Goal was canceled");
-                status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-                status.message = "Goal canceled";
-                break;
-            default:
-                RCLCPP_INFO(this->get_logger(), "Unknown result code");
-                status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-                status.message = "Unknown result code";
-                break;
+        case rclcpp_action::ResultCode::SUCCEEDED:
+            RCLCPP_INFO(this->get_logger(), "Goal succeeded");
+            status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+            status.message = "Goal succeeded";
+            break;
+        case rclcpp_action::ResultCode::ABORTED:
+            RCLCPP_INFO(this->get_logger(), "Goal was aborted");
+            status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+            status.message = "Goal aborted";
+            break;
+        case rclcpp_action::ResultCode::CANCELED:
+            RCLCPP_INFO(this->get_logger(), "Goal was canceled");
+            status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+            status.message = "Goal canceled";
+            break;
+        default:
+            RCLCPP_INFO(this->get_logger(), "Unknown result code");
+            status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+            status.message = "Unknown result code";
+            break;
         }
         // After the goal is complete, re-enable the subscriber to receive new paths
         // if (!this->path_sub) {
-            // this->path_sub = this->create_subscription<nav_msgs::msg::Path>("path", 10, std::bind(&Navigator::path_callback, this, _1));
+        // this->path_sub = this->create_subscription<nav_msgs::msg::Path>("path", 10,
+        // std::bind(&Navigator::path_callback, this, _1));
         // }
     }
 };
