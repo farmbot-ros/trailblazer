@@ -96,6 +96,14 @@ namespace farmtrax {
         // Initialize with a list of (x, y) coordinates
         Field(const std::vector<std::pair<double, double>> &coordinates) { gen_field(coordinates); }
 
+        Field(const std::vector<std::vector<double>> &coordinates) {
+            std::vector<std::pair<double, double>> points;
+            for (const auto &coord : coordinates) {
+                points.emplace_back(coord[0], coord[1]);
+            }
+            gen_field(points);
+        }
+
         Field(const Polygon &polygon) {
             std::vector<std::pair<double, double>> points;
             for (const auto &point : polygon.outer()) {

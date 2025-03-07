@@ -35,15 +35,10 @@ namespace trailblazer {
         double vehicle_coverage_;
         int alternate_freq_;
         double path_angle_;
-
         bool planner_initialized_ = false;
 
         std::string namespace_;
         rclcpp::Node::SharedPtr node_;
-
-        farmtrax::Field field_;
-        farmtrax::Swaths swaths_;
-        farmtrax::Plan plan_;
 
         farmbot_interfaces::msg::Lines border_msg_;
         farmbot_interfaces::msg::Lines headlands_msg_;
@@ -57,34 +52,29 @@ namespace trailblazer {
         rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_publisher_;
 
       public:
-        GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
+        farmtrax::Field field_;
+        farmtrax::Swaths swaths_;
+        farmtrax::Plan plan_;
 
+        GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
             vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
             // Alternate frequency is the number of robots in the swath
             alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);
             path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
             RCLCPP_INFO(node_->get_logger(), "swath frequency: %i", alternate_freq_);
-
             // Create the service clients
             get_the_field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("/field/get_field");
-
             // Timers
             planner_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::timer_callback, this));
-
             // Line publisher
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
             swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
             headlands_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/headlands", 10);
-
             // Namespace
             namespace_ = node_->get_namespace();
             if (!namespace_.empty() && namespace_[0] == '/') {
                 namespace_ = namespace_.substr(1);
             }
-
-            // swaths_.pass_node(node_);
-            // plan_.pass_node(node_);
-            // field_.pass_node(node_);
         }
 
         void gen_lines(std::vector<std::vector<double>> points) { genenerate(points); }
@@ -104,9 +94,9 @@ namespace trailblazer {
                 RCLCPP_ERROR(node_->get_logger(), "Failed to get the field");
                 return;
             }
-            RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
+            // RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
 
-            // field_.gen_field(points);
+            field_ = farmtrax::Field(points);
             // border_msg_ = vec_polygon(field_.get_border_points());
             // RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
             //
@@ -131,46 +121,5 @@ namespace trailblazer {
             // planner_initialized_ = true;
         }
 
-        // std::vector<std::vector<double>> get_field(std::string geojson_file_path = "") {
-        //     std::vector<std::vector<double>> points;
-        //     auto request = std::make_shared<farmbot_interfaces::srv::Field::Request>();
-        //     request->geojson_file = geojson_file_path;
-        //     while (!get_the_field_client_->wait_for_service(1s)) {
-        //         if (!rclcpp::ok()) {
-        //             RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting.");
-        //             return {};
-        //         }
-        //         RCLCPP_INFO(this->get_logger(), "Service not available, waiting again...");
-        //     }
-        //     auto result = get_the_field_client_->async_send_request(request);
-        //     auto lpts = result.get()->loc_points;
-        //     auto gpts = result.get()->geo_points;
-        //     for (int i = 0; i < result.get()->points; i++) {
-        //         points.emplace_back(lpts[i].x, lpts[i].y, lpts[i].z, gpts[i].latitude, gpts[i].longitude,
-        //         gpts[i].altitude);
-        //     }
-        //     return points;
-        // }
-        //
-        // farmbot_interfaces::msg::Lines swaths_to_msg(const std::vector<farmtrax::Swath> &swaths, std::string robot) {
-        //     farmbot_interfaces::msg::Lines swaths_msg;
-        //     for (const auto &swath : swaths) {
-        //         farmbot_interfaces::msg::Line swath_msg;
-        //         std::vector<geometry_msgs::msg::Point> loc_line;
-        //         for (const auto &point : swath.swath) {
-        //             geometry_msgs::msg::Point p;
-        //             p.x = point.x();
-        //             p.y = point.y();
-        //             loc_line.push_back(p);
-        //         }
-        //         swath_msg.loc_line = loc_line;
-        //         swath_msg.robot = robot;
-        //         swath_msg.length = swath.length;
-        //         swath_msg.uuid = swath.uuid;
-        //         swath_msg.type = static_cast<uint8_t>(swath.type);
-        //         swaths_msg.lines.push_back(swath_msg);
-        //     }
-        //     return swaths_msg;
-        // }
     };
 } // namespace trailblazer
