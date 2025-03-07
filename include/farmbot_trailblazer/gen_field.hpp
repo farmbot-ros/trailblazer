@@ -20,7 +20,7 @@ namespace trailblazer {
     using namespace std::placeholders;
     namespace echo = spdlog;
 
-    class GetField {
+    class GenField {
       private:
         rclcpp::Node::SharedPtr node_;
         std::string geojson_file_;
@@ -29,7 +29,7 @@ namespace trailblazer {
         std::vector<std::vector<double>> geojson_points_;
 
       public:
-        GetField(rclcpp::Node::SharedPtr node) : node_(node) {
+        GenField(rclcpp::Node::SharedPtr node) : node_(node) {
             std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_trailblazer");
             std::string geojson_path = package_share_directory + "/config/field.geojson";
 
@@ -43,10 +43,12 @@ namespace trailblazer {
             RCLCPP_INFO(node_->get_logger(), "GetTheField Service Node is ready.");
         }
 
-        void initialize() {
+        void gen_field() {
             getPointsFromGeoJSON(geojson_file_);
             std::thread([this] { navToEnu(geojson_points_); }).detach();
         }
+
+        std::vector<std::vector<double>> get_field() { return field_points_; }
 
       private:
         void getPointsFromGeoJSON(const std::string &geojson_file) {

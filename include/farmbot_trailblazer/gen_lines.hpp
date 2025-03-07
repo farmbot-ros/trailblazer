@@ -30,7 +30,7 @@
 namespace trailblazer {
     using namespace std::chrono_literals;
     using namespace std::placeholders;
-    class GenField {
+    class GenLines {
       private:
         double vehicle_coverage_;
         int alternate_freq_;
@@ -57,7 +57,7 @@ namespace trailblazer {
         rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_publisher_;
 
       public:
-        GenField(rclcpp::Node::SharedPtr node) : node_(node) {
+        GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
 
             vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
             // Alternate frequency is the number of robots in the swath
@@ -69,7 +69,7 @@ namespace trailblazer {
             get_the_field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("/field/get_field");
 
             // Timers
-            planner_timer_ = node_->create_wall_timer(1s, std::bind(&GenField::timer_callback, this));
+            planner_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::timer_callback, this));
 
             // Line publisher
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
@@ -87,6 +87,8 @@ namespace trailblazer {
             // field_.pass_node(node_);
         }
 
+        void gen_lines(std::vector<std::vector<double>> points) { genenerate(points); }
+
       private:
         void timer_callback() {
             if (!planner_initialized_) {
@@ -97,11 +99,12 @@ namespace trailblazer {
             headlands_publisher_->publish(headlands_msg_);
         }
 
-        void gen_swaths(std::vector<std::vector<double>> points) {
+        void genenerate(std::vector<std::vector<double>> points) {
             if (points.empty()) {
                 RCLCPP_ERROR(node_->get_logger(), "Failed to get the field");
                 return;
             }
+            RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
 
             // field_.gen_field(points);
             // border_msg_ = vec_polygon(field_.get_border_points());

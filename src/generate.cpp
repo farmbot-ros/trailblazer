@@ -11,8 +11,8 @@
 #include <utility>
 #include <vector>
 
-#include "farmbot_trailblazer/utils/gen_field.hpp"
-#include "farmbot_trailblazer/utils/get_field.hpp"
+#include "farmbot_trailblazer/gen_field.hpp"
+#include "farmbot_trailblazer/gen_lines.hpp"
 
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
@@ -32,23 +32,40 @@ using namespace std::placeholders;
 class Generator {
   private:
     rclcpp::Node::SharedPtr node_;
-    std::shared_ptr<trailblazer::GetField> get_field_;
     std::shared_ptr<trailblazer::GenField> gen_field_;
+    std::shared_ptr<trailblazer::GenLines> gen_lines_;
     double vehicle_coverage_;
     int alternate_freq_;
     double path_angle_;
 
+    // timer
+    rclcpp::TimerBase::SharedPtr gen_field_timer_;
+    rclcpp::TimerBase::SharedPtr gen_lines_timer_;
+
   public:
-    Generator(rclcpp::Node::SharedPtr node, std::shared_ptr<trailblazer::GetField> get_field,
-              std::shared_ptr<trailblazer::GenField> gen_field)
-        : node_(node), get_field_(get_field), gen_field_(gen_field) {
+    Generator(rclcpp::Node::SharedPtr node, std::shared_ptr<trailblazer::GenField> gen_field,
+              std::shared_ptr<trailblazer::GenLines> gen_lines)
+        : node_(node), gen_field_(gen_field), gen_lines_(gen_lines) {
+
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
-        // Alternate frequency is the number of robots in the swath
         alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
-        RCLCPP_INFO(node_->get_logger(), "swath frequency: %i", alternate_freq_);
 
-        get_field_->initialize();
+        gen_field_timer_ = node_->create_wall_timer(100ms, std::bind(&Generator::gen_field_timer_callback, this));
+        gen_lines_timer_ = node_->create_wall_timer(100ms, std::bind(&Generator::gen_lines_timer_callback, this));
+    }
+
+    void gen_field_timer_callback() {
+        gen_field_->gen_field();
+        gen_field_timer_->cancel();
+    }
+
+    void gen_lines_timer_callback() {
+        if (gen_field_->get_field().empty()) {
+            return;
+        }
+        gen_lines_->gen_lines(gen_field_->get_field());
+        gen_lines_timer_->cancel();
     }
 };
 
@@ -60,10 +77,10 @@ int main(int argc, char *argv[]) {
     options.automatically_declare_parameters_from_overrides(true);
 
     rclcpp::Node::SharedPtr get_field_node = rclcpp::Node::make_shared("get_field", options);
-    std::shared_ptr<trailblazer::GetField> get_field = std::make_shared<trailblazer::GetField>(get_field_node);
+    std::shared_ptr<trailblazer::GenField> get_field = std::make_shared<trailblazer::GenField>(get_field_node);
 
     rclcpp::Node::SharedPtr gen_field_node = rclcpp::Node::make_shared("gen_field", options);
-    std::shared_ptr<trailblazer::GenField> gen_field = std::make_shared<trailblazer::GenField>(gen_field_node);
+    std::shared_ptr<trailblazer::GenLines> gen_field = std::make_shared<trailblazer::GenLines>(gen_field_node);
 
     rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("gen_lines", options);
     std::shared_ptr<Generator> generator = std::make_shared<Generator>(node, get_field, gen_field);
