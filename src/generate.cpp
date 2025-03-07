@@ -32,14 +32,16 @@ using namespace std::placeholders;
 class Generator {
   private:
     rclcpp::Node::SharedPtr node_;
-    // std::shared_ptr<trailblazer::GetField> get_field_;
-    // std::shared_ptr<trailblazer::GenField> gen_field_;
+    std::shared_ptr<trailblazer::GetField> get_field_;
+    std::shared_ptr<trailblazer::GenField> gen_field_;
     double vehicle_coverage_;
     int alternate_freq_;
     double path_angle_;
 
   public:
-    Generator(rclcpp::Node::SharedPtr node) : node_(node) {
+    Generator(rclcpp::Node::SharedPtr node, std::shared_ptr<trailblazer::GetField> get_field,
+              std::shared_ptr<trailblazer::GenField> gen_field)
+        : node_(node), get_field_(get_field), gen_field_(gen_field) {
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         // Alternate frequency is the number of robots in the swath
         alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);
@@ -57,16 +59,16 @@ int main(int argc, char *argv[]) {
 
     rclcpp::Node::SharedPtr get_field_node = rclcpp::Node::make_shared("get_field", options);
     std::shared_ptr<trailblazer::GetField> get_field = std::make_shared<trailblazer::GetField>(get_field_node);
-    //
-    // rclcpp::Node::SharedPtr gen_field_node = rclcpp::Node::make_shared("gen_field", options);
-    // std::shared_ptr<trailblazer::GenField> gen_field = std::make_shared<trailblazer::GenField>(gen_field_node);
-    //
-    // rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("gen_lines", options);
-    // std::shared_ptr<Generator> generator = std::make_shared<Generator>(node);
+
+    rclcpp::Node::SharedPtr gen_field_node = rclcpp::Node::make_shared("gen_field", options);
+    std::shared_ptr<trailblazer::GenField> gen_field = std::make_shared<trailblazer::GenField>(gen_field_node);
+
+    rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("gen_lines", options);
+    std::shared_ptr<Generator> generator = std::make_shared<Generator>(node, get_field, gen_field);
     try {
         executor.add_node(get_field_node);
-        // executor.add_node(gen_field_node);
-        // executor.add_node(node);
+        executor.add_node(gen_field_node);
+        executor.add_node(node);
         executor.spin();
     } catch (const std::exception &e) {
         return 1;
