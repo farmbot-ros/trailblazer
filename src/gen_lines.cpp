@@ -136,6 +136,7 @@ class FieldProcessorNode : public rclcpp::Node {
         for (const auto &swath : plan_.get_swaths_vec()) {
             flat_swaths.insert(flat_swaths.end(), swath.begin(), swath.end());
         }
+        planner_initialized_ = true;
     }
 
     farmbot_interfaces::msg::Swaths gen_swath_msg(const std::vector<farmtrax::Swath> &swaths, std::string robot) {
