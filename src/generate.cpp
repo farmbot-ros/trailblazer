@@ -32,18 +32,14 @@ using namespace std::placeholders;
 class Generator {
   private:
     rclcpp::Node::SharedPtr node_;
+    // std::shared_ptr<trailblazer::GetField> get_field_;
+    // std::shared_ptr<trailblazer::GenField> gen_field_;
     double vehicle_coverage_;
     int alternate_freq_;
     double path_angle_;
 
-    trailblazer::GenField gen_field_;
-    trailblazer::GetField get_field_;
-
   public:
     Generator(rclcpp::Node::SharedPtr node) : node_(node) {
-        // gen_field_.init(node);
-        get_field_.init(node);
-
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         // Alternate frequency is the number of robots in the swath
         alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);
@@ -54,15 +50,24 @@ class Generator {
 
 int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
-    rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 8);
     rclcpp::NodeOptions options;
     options.allow_undeclared_parameters(true);
     options.automatically_declare_parameters_from_overrides(true);
-    rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("gen_lines", options);
-    Generator generator(node);
 
+    rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("gen_lines", options);
+
+    rclcpp::Node::SharedPtr get_field_node = rclcpp::Node::make_shared("get_field", options);
+    std::shared_ptr<trailblazer::GetField> get_field = std::make_shared<trailblazer::GetField>(get_field_node);
+
+    rclcpp::Node::SharedPtr gen_field_node = rclcpp::Node::make_shared("gen_field", options);
+    std::shared_ptr<trailblazer::GenField> gen_field = std::make_shared<trailblazer::GenField>(gen_field_node);
+
+    Generator generator(node);
     try {
         executor.add_node(node);
+        executor.add_node(get_field_node);
+        executor.add_node(gen_field_node);
         executor.spin();
     } catch (const std::exception &e) {
         RCLCPP_ERROR(node->get_logger(), "Could not spin executor: %s", e.what());

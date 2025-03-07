@@ -57,10 +57,7 @@ namespace trailblazer {
         rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_publisher_;
 
       public:
-        GenField() = default;
-
-        void init(rclcpp::Node::SharedPtr node) {
-            node_ = node;
+        GenField(rclcpp::Node::SharedPtr node) : node_(node) {
 
             vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
             // Alternate frequency is the number of robots in the swath

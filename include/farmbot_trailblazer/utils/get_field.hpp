@@ -25,15 +25,10 @@ namespace trailblazer {
         rclcpp::Node::SharedPtr node_;
         std::string geojson_file_;
         rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
-
-        // Add callback groups
-        rclcpp::CallbackGroup::SharedPtr client_callback_group_;
+        std::vector<std::vector<double>> points_;
 
       public:
-        GetField() = default;
-
-        void init(rclcpp::Node::SharedPtr node) {
-            node_ = node;
+        GetField(rclcpp::Node::SharedPtr node) : node_(node) {
             std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_trailblazer");
             std::string geojson_path = package_share_directory + "/config/field.geojson";
 
@@ -41,22 +36,13 @@ namespace trailblazer {
 
             echo::info("GeoJSON file: {}", geojson_file_);
 
-            // Create callback groups
-            client_callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-
-            // rclcpp::QoS qos_profile(10);
-            auto qos_profile = rmw_qos_profile_t();
-
             // Create the GPS to ENU client, assign it to the client callback group
-            gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu", qos_profile,
-                                                                                     client_callback_group_);
+            gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
 
             RCLCPP_INFO(node_->get_logger(), "GetTheField Service Node is ready.");
-        }
 
-        std::vector<std::vector<double>> getBorders() {
             auto points = getPointsFromGeoJSON(geojson_file_);
-            return navToEnu(points);
+            points = navToEnu(points);
         }
 
       private:
