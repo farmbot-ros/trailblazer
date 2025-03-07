@@ -55,22 +55,21 @@ int main(int argc, char *argv[]) {
     options.allow_undeclared_parameters(true);
     options.automatically_declare_parameters_from_overrides(true);
 
-    rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("gen_lines", options);
-
     rclcpp::Node::SharedPtr get_field_node = rclcpp::Node::make_shared("get_field", options);
     std::shared_ptr<trailblazer::GetField> get_field = std::make_shared<trailblazer::GetField>(get_field_node);
-
-    rclcpp::Node::SharedPtr gen_field_node = rclcpp::Node::make_shared("gen_field", options);
-    std::shared_ptr<trailblazer::GenField> gen_field = std::make_shared<trailblazer::GenField>(gen_field_node);
-
-    Generator generator(node);
+    //
+    // rclcpp::Node::SharedPtr gen_field_node = rclcpp::Node::make_shared("gen_field", options);
+    // std::shared_ptr<trailblazer::GenField> gen_field = std::make_shared<trailblazer::GenField>(gen_field_node);
+    //
+    // rclcpp::Node::SharedPtr node = rclcpp::Node::make_shared("gen_lines", options);
+    // std::shared_ptr<Generator> generator = std::make_shared<Generator>(node);
     try {
-        executor.add_node(node);
         executor.add_node(get_field_node);
-        executor.add_node(gen_field_node);
+        // executor.add_node(gen_field_node);
+        // executor.add_node(node);
         executor.spin();
     } catch (const std::exception &e) {
-        RCLCPP_ERROR(node->get_logger(), "Could not spin executor: %s", e.what());
+        return 1;
     }
     rclcpp::shutdown();
     return 0;

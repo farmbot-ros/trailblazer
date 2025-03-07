@@ -25,7 +25,8 @@ namespace trailblazer {
         rclcpp::Node::SharedPtr node_;
         std::string geojson_file_;
         rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
-        std::vector<std::vector<double>> points_;
+        std::vector<std::vector<double>> field_points_;
+        std::vector<std::vector<double>> geojson_points_;
 
       public:
         GetField(rclcpp::Node::SharedPtr node) : node_(node) {
@@ -41,24 +42,21 @@ namespace trailblazer {
 
             RCLCPP_INFO(node_->get_logger(), "GetTheField Service Node is ready.");
 
-            auto points = getPointsFromGeoJSON(geojson_file_);
-            points = navToEnu(points);
+            getPointsFromGeoJSON(geojson_file_);
+            std::thread([this] { navToEnu(geojson_points_); }).detach();
         }
 
       private:
-        std::vector<std::vector<double>> getPointsFromGeoJSON(const std::string &geojson_file) {
-            std::vector<std::vector<double>> points;
+        void getPointsFromGeoJSON(const std::string &geojson_file) {
             try {
                 auto geojsonObject = geojson::parseGeoJSONFromFile(geojson_file);
-                points = geojson::utils::extractFirstPolygon(geojsonObject);
+                geojson_points_ = geojson::utils::extractFirstPolygon(geojsonObject);
             } catch (const std::exception &e) {
                 RCLCPP_ERROR(node_->get_logger(), "Error parsing GeoJSON: %s", e.what());
             }
-            return points;
         }
 
-        std::vector<std::vector<double>> navToEnu(const std::vector<std::vector<double>> &navpts) {
-            std::vector<std::vector<double>> points;
+        void navToEnu(const std::vector<std::vector<double>> &navpts) {
             auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
             for (const auto &point : navpts) {
                 sensor_msgs::msg::NavSatFix gps_point;
@@ -70,7 +68,7 @@ namespace trailblazer {
             while (!gps2enu_client_->wait_for_service(1s)) {
                 if (!rclcpp::ok()) {
                     RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                    return {};
+                    return;
                 }
                 RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
             }
@@ -82,14 +80,14 @@ namespace trailblazer {
             auto result = result_future.get();
             if (!result) {
                 RCLCPP_ERROR(node_->get_logger(), "Service call failed.");
-                return {};
+                return;
             }
             auto getres = result->enu;
             for (uint i = 0; i < getres.size(); i++) {
-                points.push_back({getres[i].position.x, getres[i].position.y, getres[i].position.z, navpts[i][0],
-                                  navpts[i][1], navpts[i][2]});
+                field_points_.push_back({getres[i].position.x, getres[i].position.y, getres[i].position.z, navpts[i][0],
+                                         navpts[i][1], navpts[i][2]});
             }
-            return points;
+            RCLCPP_INFO(node_->get_logger(), "Successfully retrieved %zu waypoints.", field_points_.size());
         }
     };
 } // namespace trailblazer
