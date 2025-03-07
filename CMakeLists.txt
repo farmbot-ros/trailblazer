@@ -27,9 +27,9 @@ install(
 )
 
 set(executables
-    gen_lines
     getthe_field
-    to_nav
+    gen_lines
+    gen_plan
 )
 
 find_package(ament_cmake REQUIRED)

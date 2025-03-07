@@ -15,11 +15,9 @@
 #include <boost/uuid/uuid_generators.hpp> // generators
 #include <boost/uuid/uuid_io.hpp>         // streaming operators etc.
 
-#include "farmbot_interfaces/msg/polygon_array.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <cmath>
-#include <farmbot_interfaces/msg/detail/polygon_array__struct.hpp>
 #include <map>
 #include <queue>
 #include <string>
