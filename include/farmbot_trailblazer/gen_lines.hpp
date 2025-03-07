@@ -25,8 +25,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 
-// namespace echo = spdlog;
-
 namespace trailblazer {
     using namespace std::chrono_literals;
     using namespace std::placeholders;
@@ -85,8 +83,8 @@ namespace trailblazer {
                 return;
             }
             border_publisher_->publish(border_msg_);
-            swaths_publisher_->publish(swaths_msg_);
-            headlands_publisher_->publish(headlands_msg_);
+            // swaths_publisher_->publish(swaths_msg_);
+            // headlands_publisher_->publish(headlands_msg_);
         }
 
         void genenerate(std::vector<std::vector<double>> points) {
@@ -94,6 +92,8 @@ namespace trailblazer {
                 RCLCPP_ERROR(node_->get_logger(), "Failed to get the field");
                 return;
             }
+
+            fill_border_msg(points);
             // RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
 
             field_ = farmtrax::Field(points);
@@ -118,8 +118,28 @@ namespace trailblazer {
             // for (const auto &swath : plan_.get_swaths_vec()) {
             //     flat_swaths.insert(flat_swaths.end(), swath.begin(), swath.end());
             // }
-            // planner_initialized_ = true;
+            planner_initialized_ = true;
         }
 
+        void fill_border_msg(std::vector<std::vector<double>> points) {
+            RCLCPP_INFO(node_->get_logger(), "Border received: %lu", points.size());
+            for (const auto &point : points) {
+                farmbot_interfaces::msg::Line border_msg;
+
+                geometry_msgs::msg::Point loc_p;
+                loc_p.x = point[0];
+                loc_p.y = point[1];
+                loc_p.z = point[2];
+                border_msg.loc_line.push_back(loc_p);
+
+                geometry_msgs::msg::Point geo_p;
+                geo_p.x = point[3];
+                geo_p.y = point[4];
+                geo_p.z = point[5];
+                border_msg.geo_line.push_back(geo_p);
+
+                border_msg_.lines.push_back(border_msg);
+            }
+        }
     };
 } // namespace trailblazer

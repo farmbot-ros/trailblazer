@@ -21,10 +21,10 @@ def launch_setup(context, *args, **kwargs):
     is_calculator = False if calculator == "0" else True
     # print({'alternate_freq': alternate_freq} if alternate_freq != '' else {})
 
-    gen_lines = Node(
+    generate = Node(
         package="farmbot_trailblazer",
-        executable="gen_lines",
-        name="gen_lines",
+        executable="generate",
+        name="generate",
         namespace=namespace,
         parameters=[
             yaml.safe_load(open(param_file))["gen_lines"]["ros__parameters"],
@@ -34,19 +34,10 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
-    getthe_field = Node(
-        package="farmbot_trailblazer",
-        executable="getthe_field",
-        name="getthe_field",
-        namespace=namespace,
-        parameters=[
-            yaml.safe_load(open(param_file))["getthe_field"]["ros__parameters"],
-            yaml.safe_load(open(param_file))["global"]["ros__parameters"],
-        ],
-    )
     if is_calculator:
-        nodes_array.append(gen_lines)
-        nodes_array.append(getthe_field)
+        nodes_array.append(generate)
+
+    return nodes_array
 
 
 def generate_launch_description():
