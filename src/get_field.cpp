@@ -19,7 +19,7 @@ using namespace std::chrono_literals;
 using namespace std::placeholders;
 namespace echo = spdlog;
 
-class GetTheFieldService : public rclcpp::Node {
+class GetTheField : public rclcpp::Node {
   private:
     std::string geojson_file_;
     rclcpp::Service<Field>::SharedPtr service_;
@@ -30,7 +30,7 @@ class GetTheFieldService : public rclcpp::Node {
     rclcpp::CallbackGroup::SharedPtr service_callback_group_;
 
   public:
-    GetTheFieldService()
+    GetTheField()
         : Node("getthe_field",
                rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(
                    true)) {
@@ -55,7 +55,7 @@ class GetTheFieldService : public rclcpp::Node {
 
         // Create the service, assign it to the service callback group
         service_ = this->create_service<Field>("/field/get_field",
-                                               std::bind(&GetTheFieldService::handle_get_the_field, this, _1, _2),
+                                               std::bind(&GetTheField::handle_get_the_field, this, _1, _2),
                                                qos_profile, service_callback_group_);
 
         RCLCPP_INFO(this->get_logger(), "GetTheField Service Node is ready.");
@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
 
     // Create the node
-    auto node = std::make_shared<GetTheFieldService>();
+    auto node = std::make_shared<GetTheField>();
 
     // Use a MultiThreadedExecutor
     rclcpp::executors::MultiThreadedExecutor executor;
