@@ -31,9 +31,7 @@ namespace trailblazer {
         rclcpp::CallbackGroup::SharedPtr service_callback_group_;
 
       public:
-        GetTheField() = default;
-
-        inline void init(rclcpp::Node::SharedPtr node) {
+        GetTheField(rclcpp::Node::SharedPtr node) {
             node_ = node;
             std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_trailblazer");
             std::string geojson_path = package_share_directory + "/config/field.geojson";

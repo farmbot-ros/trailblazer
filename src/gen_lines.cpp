@@ -1,13 +1,11 @@
 #include "farmbot_trailblazer/farmtrax/field.hpp"
-#include "farmbot_trailblazer/farmtrax/mesh.hpp"
 #include "farmbot_trailblazer/farmtrax/plan.hpp"
-#include "farmbot_trailblazer/farmtrax/route.hpp"
 #include "farmbot_trailblazer/farmtrax/swath.hpp"
-#include "farmbot_trailblazer/utils/geojson.hpp"
 #include <chrono>
 #include <memory>
 #include <nav_msgs/msg/detail/path__struct.hpp>
 #include <rclcpp/logging.hpp>
+#include <rclcpp/node_options.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <tuple>
@@ -31,7 +29,7 @@
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-class FieldProcessorNode : public rclcpp::Node {
+class Generator {
   private:
     double vehicle_coverage_;
     int alternate_freq_;
@@ -40,11 +38,13 @@ class FieldProcessorNode : public rclcpp::Node {
     bool planner_initialized_ = false;
 
     std::string namespace_;
-    trailblazer::GetTheField get_the_field_;
+    rclcpp::Node::SharedPtr node_;
 
     farmtrax::Field field_;
     farmtrax::Swaths swaths_;
     farmtrax::Plan plan_;
+
+    trailblazer::GetTheField get_the_field_;
 
     farmbot_interfaces::msg::Lines border_msg_;
     farmbot_interfaces::msg::Lines headlands_msg_;
@@ -58,40 +58,35 @@ class FieldProcessorNode : public rclcpp::Node {
     rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_publisher_;
 
   public:
-    FieldProcessorNode()
-        : Node("gen_lines",
-               rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(
-                   true)) {
-        vehicle_coverage_ = this->get_parameter_or<double>("vehicle_coverage", 3.0);
+    Generator(rclcpp::Node::SharedPtr node) : node_(node), get_the_field_(node) {
+        vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         // Alternate frequency is the number of robots in the swath
-        alternate_freq_ = this->get_parameter_or<int>("alternate_freq", 1);
-        path_angle_ = this->get_parameter_or<double>("path_angle", 90);
-        RCLCPP_INFO(this->get_logger(), "swath frequency: %i", alternate_freq_);
-
-        get_the_field_.init(this->shared_from_this());
+        alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);
+        path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
+        RCLCPP_INFO(node_->get_logger(), "swath frequency: %i", alternate_freq_);
 
         // Create the service clients
-        get_the_field_client_ = this->create_client<farmbot_interfaces::srv::Field>("/field/get_field");
+        get_the_field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("/field/get_field");
 
         // Timers
-        planner_timer_ = this->create_wall_timer(1s, std::bind(&FieldProcessorNode::planner_timer_cb, this));
+        planner_timer_ = node_->create_wall_timer(1s, std::bind(&Generator::planner_timer_cb, node_));
 
         // Line publisher
-        border_publisher_ = this->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
-        swaths_publisher_ = this->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
-        headlands_publisher_ = this->create_publisher<farmbot_interfaces::msg::Lines>("/field/headlands", 10);
+        border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
+        swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
+        headlands_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/headlands", 10);
 
         // Namespace
-        namespace_ = this->get_namespace();
+        namespace_ = node_->get_namespace();
         if (!namespace_.empty() && namespace_[0] == '/') {
             namespace_ = namespace_.substr(1);
         }
     }
 
     void init() {
-        swaths_.pass_node(this->shared_from_this());
-        plan_.pass_node(this->shared_from_this());
-        field_.pass_node(this->shared_from_this());
+        field_.pass_node(node_->shared_from_this());
+        swaths_.pass_node(node_->shared_from_this());
+        plan_.pass_node(node_->shared_from_this());
         std::thread([this] { gen_swaths(); }).detach();
     }
 
@@ -108,7 +103,7 @@ class FieldProcessorNode : public rclcpp::Node {
     void gen_swaths() {
         std::vector<std::vector<double>> points = get_the_field_.getBorders();
         if (points.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to get the field");
+            RCLCPP_ERROR(node_->get_logger(), "Failed to get the field");
             return;
         }
 
@@ -183,8 +178,13 @@ class FieldProcessorNode : public rclcpp::Node {
 int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
     rclcpp::executors::MultiThreadedExecutor executor;
-    auto node = std::make_shared<FieldProcessorNode>();
-    node->init();
+    rclcpp::NodeOptions options;
+    options.allow_undeclared_parameters(true);
+    options.automatically_declare_parameters_from_overrides(true);
+    auto node = std::make_shared
+                    // auto node = std::make_shared<FieldProcessorNode>(rclcpp::Node::make_shared("gen_lines",
+                    // options)); auto node = std::make_shared<FieldProcessorNode>();
+                    node->init();
     try {
         executor.add_node(node);
         executor.spin();

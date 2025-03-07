@@ -32,7 +32,7 @@
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-class FieldProcessorNode {
+class Generator {
   private:
     double vehicle_coverage_;
     int alternate_freq_;
@@ -59,7 +59,7 @@ class FieldProcessorNode {
     rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_publisher_;
 
   public:
-    FieldProcessorNode(rclcpp::Node::SharedPtr node) : node_(node) {
+    Generator(rclcpp::Node::SharedPtr node) : node_(node) {
 
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         // Alternate frequency is the number of robots in the swath
@@ -71,7 +71,7 @@ class FieldProcessorNode {
         get_the_field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("/field/get_field");
 
         // Timers
-        planner_timer_ = node_->create_wall_timer(1s, std::bind(&FieldProcessorNode::planner_timer_cb, node_));
+        planner_timer_ = node_->create_wall_timer(1s, std::bind(&Generator::planner_timer_cb, node_));
 
         // Line publisher
         border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
