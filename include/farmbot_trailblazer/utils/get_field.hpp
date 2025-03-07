@@ -41,7 +41,9 @@ namespace trailblazer {
             gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
 
             RCLCPP_INFO(node_->get_logger(), "GetTheField Service Node is ready.");
+        }
 
+        void initialize() {
             getPointsFromGeoJSON(geojson_file_);
             std::thread([this] { navToEnu(geojson_points_); }).detach();
         }

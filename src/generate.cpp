@@ -47,12 +47,14 @@ class Generator {
         alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
         RCLCPP_INFO(node_->get_logger(), "swath frequency: %i", alternate_freq_);
+
+        get_field_->initialize();
     }
 };
 
 int main(int argc, char *argv[]) {
     rclcpp::init(argc, argv);
-    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 8);
+    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
     rclcpp::NodeOptions options;
     options.allow_undeclared_parameters(true);
     options.automatically_declare_parameters_from_overrides(true);
