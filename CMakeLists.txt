@@ -27,7 +27,7 @@ install(
 )
 
 set(executables
-    getthe_field
+    get_field
     gen_lines
     gen_plan
 )

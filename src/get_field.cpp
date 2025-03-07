@@ -8,13 +8,13 @@
 #include <vector>
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
-#include "farmbot_interfaces/srv/get_the_field.hpp"
+#include "farmbot_interfaces/srv/field.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_trailblazer/utils/geojson.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 
-using GetTheField = farmbot_interfaces::srv::GetTheField;
+using Field = farmbot_interfaces::srv::Field;
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 namespace echo = spdlog;
@@ -22,7 +22,7 @@ namespace echo = spdlog;
 class GetTheFieldService : public rclcpp::Node {
   private:
     std::string geojson_file_;
-    rclcpp::Service<GetTheField>::SharedPtr service_;
+    rclcpp::Service<Field>::SharedPtr service_;
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
 
     // Add callback groups
@@ -54,16 +54,16 @@ class GetTheFieldService : public rclcpp::Node {
             this->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu", qos_profile, client_callback_group_);
 
         // Create the service, assign it to the service callback group
-        service_ = this->create_service<GetTheField>("/field/get_field",
-                                                     std::bind(&GetTheFieldService::handle_get_the_field, this, _1, _2),
-                                                     qos_profile, service_callback_group_);
+        service_ = this->create_service<Field>("/field/get_field",
+                                               std::bind(&GetTheFieldService::handle_get_the_field, this, _1, _2),
+                                               qos_profile, service_callback_group_);
 
         RCLCPP_INFO(this->get_logger(), "GetTheField Service Node is ready.");
     }
 
   private:
-    void handle_get_the_field(const std::shared_ptr<GetTheField::Request> request,
-                              std::shared_ptr<GetTheField::Response> response) {
+    void handle_get_the_field(const std::shared_ptr<Field::Request> request,
+                              std::shared_ptr<Field::Response> response) {
 
         RCLCPP_INFO(this->get_logger(), "Received GetTheField request.");
         std::string geojson_file = request->geojson_file;
@@ -88,9 +88,10 @@ class GetTheFieldService : public rclcpp::Node {
             waypoints.push_back(waypoint);
             loc_points.push_back({lat, lon});
         }
-        response->field = waypoints;
+        response->points = waypoints.size();
+        response->geo_points = waypoints;
         auto enu_points = nav_to_enu(loc_points);
-        response->points = enu_points;
+        response->loc_points = enu_points;
         RCLCPP_INFO(this->get_logger(), "Successfully retrieved %zu waypoints.", waypoints.size());
     }
 
