@@ -1,8 +1,8 @@
 #ifndef PLAN_HPP
 #define PLAN_HPP
 
-#include "farmbot_trailblazer/farmtrax/swath.hpp"
 #include "mesh.hpp"
+#include "swath.hpp"
 #include <algorithm>
 #include <boost/graph/graph_traits.hpp>
 #include <cmath>
@@ -14,8 +14,6 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
-
-#include "rclcpp/rclcpp.hpp"
 
 namespace farmtrax {
     class Plan {

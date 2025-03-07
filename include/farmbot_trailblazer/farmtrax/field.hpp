@@ -12,8 +12,6 @@
 #include <stdexcept>
 #include <vector>
 
-#include "rclcpp/rclcpp.hpp"
-
 namespace farmtrax {
 
     enum class BufferType { SHRINK, ENLARGE };

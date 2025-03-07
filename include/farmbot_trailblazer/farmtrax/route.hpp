@@ -3,7 +3,6 @@
 
 #include "farmbot_trailblazer/farmtrax/swath.hpp"
 #include "mesh.hpp"
-#include "spdlog/spdlog.h"
 #include <algorithm>
 #include <boost/graph/graph_traits.hpp>
 #include <cmath>
@@ -15,14 +14,10 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
-namespace echo = spdlog;
-
-#include "rclcpp/rclcpp.hpp"
 
 namespace farmtrax {
     class Route {
       private:
-        rclcpp::Node::SharedPtr node_; // ROS 2 node handle
         Mesh mesh_;
         Point start_point_;
         Point end_point_;
@@ -41,8 +36,6 @@ namespace farmtrax {
 
         // Default constructor
         Route() = default;
-
-        void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
 
         // Method to set the initial and final points
         void set_points(const Point &start, const Point &end) {
@@ -124,19 +117,19 @@ namespace farmtrax {
             select_default_points(); // Set start and end points
             switch (type) {
             case Algorithm::A_STAR: {
-                echo::info("A* algorithm not implemented yet.");
+                // echo::info("A* algorithm not implemented yet.");
                 break;
             }
             case Algorithm::BREADTH_FIRST_SEARCH: {
-                echo::info("Breadth First Search algorithm not implemented yet.");
+                // echo::info("Breadth First Search algorithm not implemented yet.");
                 break;
             }
             case Algorithm::DEPTH_FIRST_SEARCH: {
-                echo::info("Depth First Search algorithm not implemented yet.");
+                // echo::info("Depth First Search algorithm not implemented yet.");
                 break;
             }
             case Algorithm::EXHAUSTIVE_SEARCH: {
-                echo::info("Starting exhaustive search...");
+                // echo::info("Starting exhaustive search...");
                 exhaustive_search();
                 break;
             }
@@ -167,13 +160,13 @@ namespace farmtrax {
                     total_swaths++;
                 }
             }
-            echo::info("Total swaths to visit: {}", total_swaths);
+            // echo::info("Total swaths to visit: {}", total_swaths);
 
             // print the number of vertices in the graph
-            echo::info("Number of vertices in the graph: {}", boost::num_vertices(mesh_.graph_));
+            // echo::info("Number of vertices in the graph: {}", boost::num_vertices(mesh_.graph_));
 
             // print the number of edges in the graph
-            echo::info("Number of edges in the graph: {}", boost::num_edges(mesh_.graph_));
+            // echo::info("Number of edges in the graph: {}", boost::num_edges(mesh_.graph_));
 
             // Initialize an invalid vertex descriptor to track the previous vertex (no previous vertex initially)
             boost::graph_traits<Mesh::Graph>::vertex_descriptor invalid_vertex =
@@ -191,11 +184,11 @@ namespace farmtrax {
             );
 
             if (found) {
-                echo::info("Path found with {} swaths.", path.size());
+                // echo::info("Path found with {} swaths.", path.size());
                 swaths = path; // Store the path
                 return path;   // Return the path containing Swath objects
             } else {
-                echo::error("Path not found.");
+                // echo::error("Path not found.");
                 return std::vector<Swath>(); // Return empty path
             }
         }
