@@ -44,7 +44,7 @@ class Generator {
     farmtrax::Swaths swaths_;
     farmtrax::Plan plan_;
 
-    trailblazer::GetTheField get_the_field_;
+    trailblazer::GetField get_the_field_;
 
     farmbot_interfaces::msg::Lines border_msg_;
     farmbot_interfaces::msg::Lines headlands_msg_;

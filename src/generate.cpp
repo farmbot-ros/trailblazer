@@ -1,4 +1,3 @@
-
 #include "farmbot_trailblazer/farmtrax/field.hpp"
 #include "farmbot_trailblazer/farmtrax/plan.hpp"
 #include "farmbot_trailblazer/farmtrax/swath.hpp"
@@ -12,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "farmbot_trailblazer/utils/gen_field.hpp"
 #include "farmbot_trailblazer/utils/get_field.hpp"
 
 #include "farmbot_interfaces/msg/line.hpp"
@@ -36,8 +36,14 @@ class Generator {
     int alternate_freq_;
     double path_angle_;
 
+    trailblazer::GenField gen_field_;
+    trailblazer::GetField get_field_;
+
   public:
     Generator(rclcpp::Node::SharedPtr node) : node_(node) {
+        // gen_field_.init(node);
+        get_field_.init(node);
+
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         // Alternate frequency is the number of robots in the swath
         alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);

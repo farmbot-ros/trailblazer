@@ -20,13 +20,10 @@
 namespace farmtrax {
     class Plan {
       private:
-        rclcpp::Node::SharedPtr node_;               // ROS 2 node handle
         std::vector<std::vector<Swath>> swaths_vec_; // Holds Swath structs
 
       public:
         Plan() = default;
-
-        void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
 
         void plan_out(std::vector<Swath> swaths, int alternate_freq, bool only_one) {
             // reverse every other swath based on alternate_freq

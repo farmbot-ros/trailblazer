@@ -83,7 +83,6 @@ namespace farmtrax {
 
     class Field {
       private:
-        rclcpp::Node::SharedPtr node_; // ROS 2 node handle
         Polygon polygon_;
         Rtree rtree_;                   // R-tree for efficient spatial querying of polygon edges
         std::vector<LineString> edges_; // Store the edges for precise intersection
@@ -106,8 +105,6 @@ namespace farmtrax {
             }
             gen_field(points);
         }
-
-        void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
 
         // Set the boundary of the field using a list of (x, y) coordinates
         void gen_field(const std::vector<std::pair<double, double>> &coordinates) {
@@ -277,7 +274,6 @@ namespace farmtrax {
                 shrunkBoundary.emplace_back(point.x(), point.y());
             }
             shrunkField.gen_field(shrunkBoundary);
-            shrunkField.pass_node(node_);
             return shrunkField;
         }
 

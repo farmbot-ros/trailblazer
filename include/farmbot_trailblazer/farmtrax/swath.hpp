@@ -75,8 +75,7 @@ namespace farmtrax {
 
     class Swaths {
       private:
-        rclcpp::Node::SharedPtr node_; // ROS 2 node handle
-        std::vector<Swath> swaths_;    // Holds Swath structs
+        std::vector<Swath> swaths_; // Holds Swath structs
         std::vector<Polygon> heardlands_;
         Rtree swath_rtree_; // R-tree for efficient spatial querying of swaths
         double colinear_threshold_ = 0.0001;
@@ -88,8 +87,6 @@ namespace farmtrax {
         // Swaths(const Field &field, double swath_width, double angle_degrees) {
         //     gen_swaths(field, swath_width, angle_degrees);
         // }
-
-        void pass_node(rclcpp::Node::SharedPtr node) { node_ = node; }
 
         void gen_swaths(const Field &field, double swath_width, double angle_degrees, int number = 1) {
             // generate_swaths(field, swath_width, angle_degrees);
@@ -171,7 +168,6 @@ namespace farmtrax {
                 std::vector<Swath> group_swaths(swaths.begin() + start, swaths.begin() + end);
                 Swaths group_swaths_obj;
                 group_swaths_obj.swaths_ = group_swaths;
-                group_swaths_obj.pass_node(node_);
                 divided_swaths.push_back(group_swaths_obj);
                 start = end;
             }

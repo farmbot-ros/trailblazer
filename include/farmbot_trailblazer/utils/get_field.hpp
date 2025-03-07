@@ -20,7 +20,7 @@ namespace trailblazer {
     using namespace std::placeholders;
     namespace echo = spdlog;
 
-    class GetTheField {
+    class GetField {
       private:
         rclcpp::Node::SharedPtr node_;
         std::string geojson_file_;
@@ -28,10 +28,11 @@ namespace trailblazer {
 
         // Add callback groups
         rclcpp::CallbackGroup::SharedPtr client_callback_group_;
-        rclcpp::CallbackGroup::SharedPtr service_callback_group_;
 
       public:
-        GetTheField(rclcpp::Node::SharedPtr node) {
+        GetField() = default;
+
+        void init(rclcpp::Node::SharedPtr node) {
             node_ = node;
             std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_trailblazer");
             std::string geojson_path = package_share_directory + "/config/field.geojson";
@@ -42,7 +43,6 @@ namespace trailblazer {
 
             // Create callback groups
             client_callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-            service_callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
             // rclcpp::QoS qos_profile(10);
             auto qos_profile = rmw_qos_profile_t();
@@ -54,13 +54,13 @@ namespace trailblazer {
             RCLCPP_INFO(node_->get_logger(), "GetTheField Service Node is ready.");
         }
 
-        inline std::vector<std::vector<double>> getBorders() {
+        std::vector<std::vector<double>> getBorders() {
             auto points = getPointsFromGeoJSON(geojson_file_);
             return navToEnu(points);
         }
 
       private:
-        inline std::vector<std::vector<double>> getPointsFromGeoJSON(const std::string &geojson_file) {
+        std::vector<std::vector<double>> getPointsFromGeoJSON(const std::string &geojson_file) {
             std::vector<std::vector<double>> points;
             try {
                 auto geojsonObject = geojson::parseGeoJSONFromFile(geojson_file);
@@ -71,7 +71,7 @@ namespace trailblazer {
             return points;
         }
 
-        inline std::vector<std::vector<double>> navToEnu(const std::vector<std::vector<double>> &navpts) {
+        std::vector<std::vector<double>> navToEnu(const std::vector<std::vector<double>> &navpts) {
             std::vector<std::vector<double>> points;
             auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
             for (const auto &point : navpts) {
