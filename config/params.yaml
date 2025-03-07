@@ -1,20 +1,8 @@
 global:
     ros__parameters:
         topic_prefix: "/fb"
-
-gen_lines:
-    ros__parameters:
-        name: "gen_lines"
         vehicle_width: 4.0
         vehicle_coverage: 4.0
         alternate_freq: 1 # every 1 row
         path_angle: 80.0 # degrees
-
-getthe_field:
-    ros__parameters:
-        name: "getthe_field"
         geojson_file: "/doc/code/farmbot/src/trailblazer/config/field3.geojson"
-
-to_nav:
-    ros__parameters:
-        name: "to_nav"

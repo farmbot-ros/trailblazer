@@ -27,7 +27,6 @@ def launch_setup(context, *args, **kwargs):
         name="generate",
         namespace=namespace,
         parameters=[
-            yaml.safe_load(open(param_file))["gen_lines"]["ros__parameters"],
             yaml.safe_load(open(param_file))["global"]["ros__parameters"],
             {"path_angle": float(path_angle)} if path_angle != "" else {},
             {"alternate_freq": int(alternate_freq)} if alternate_freq != "" else {},
