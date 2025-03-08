@@ -1,8 +1,8 @@
 #ifndef ROUTE_HPP
 #define ROUTE_HPP
 
-#include "farmbot_trailblazer/farmtrax/swath.hpp"
 #include "mesh.hpp"
+#include "swath.hpp"
 #include <algorithm>
 #include <boost/graph/graph_traits.hpp>
 #include <cmath>

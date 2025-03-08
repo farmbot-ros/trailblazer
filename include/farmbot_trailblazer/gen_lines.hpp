@@ -1,9 +1,9 @@
-#include "farmbot_trailblazer/farmtrax/field.hpp"
-#include "farmbot_trailblazer/farmtrax/mesh.hpp"
-#include "farmbot_trailblazer/farmtrax/plan.hpp"
-#include "farmbot_trailblazer/farmtrax/route.hpp"
-#include "farmbot_trailblazer/farmtrax/swath.hpp"
 #include "farmbot_trailblazer/utils/geojson.hpp"
+#include "farmtrax/field.hpp"
+#include "farmtrax/mesh.hpp"
+#include "farmtrax/plan.hpp"
+#include "farmtrax/route.hpp"
+#include "farmtrax/swath.hpp"
 #include <chrono>
 #include <memory>
 #include <nav_msgs/msg/detail/path__struct.hpp>
@@ -97,10 +97,7 @@ namespace trailblazer {
             // RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
 
             field_ = farmtrax::Field(points);
-            // border_msg_ = vec_polygon(field_.get_border_points());
-            // RCLCPP_INFO(this->get_logger(), "Field generated: %lu", field_.get_border_points().size());
-            //
-            // swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, alternate_freq_);
+            swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, alternate_freq_);
             //
             // swaths_.reverse_swaths();
             // RCLCPP_INFO(this->get_logger(), "Lines generated: %lu", swaths_.get_swaths().size());

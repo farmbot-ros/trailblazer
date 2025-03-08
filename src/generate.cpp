@@ -1,6 +1,6 @@
-#include "farmbot_trailblazer/farmtrax/field.hpp"
-#include "farmbot_trailblazer/farmtrax/plan.hpp"
-#include "farmbot_trailblazer/farmtrax/swath.hpp"
+#include "farmtrax/field.hpp"
+#include "farmtrax/plan.hpp"
+#include "farmtrax/swath.hpp"
 #include <chrono>
 #include <memory>
 #include <rclcpp/logging.hpp>
