@@ -5,4 +5,4 @@ global:
         vehicle_coverage: 4.0
         alternate_freq: 1 # every 1 row
         path_angle: 80.0 # degrees
-        geojson_file: "/doc/code/farmbot/src/trailblazer/config/field3.geojson"
+        geojson_file: "/doc/code/farmbot/src/trailblazer/config/field4.geojson"

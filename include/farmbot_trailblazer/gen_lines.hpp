@@ -94,13 +94,13 @@ namespace trailblazer {
             }
 
             fill_border_msg(points);
-            // RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
+            RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
 
             field_ = farmtrax::Field(points);
             swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, alternate_freq_);
             //
             // swaths_.reverse_swaths();
-            // RCLCPP_INFO(this->get_logger(), "Lines generated: %lu", swaths_.get_swaths().size());
+            RCLCPP_INFO(node_->get_logger(), "Lines generated: %lu", swaths_.get_swaths().size());
             // // headlands_msg_ = vec_polygon_array(swaths_.get_heardlands());
             // plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
             // RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);

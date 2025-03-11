@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "ament_index_cpp/get_package_share_directory.hpp"
 #include "farmbot_interfaces/srv/field.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_trailblazer/utils/geojson.hpp"
@@ -18,7 +17,6 @@ namespace trailblazer {
     using Field = farmbot_interfaces::srv::Field;
     using namespace std::chrono_literals;
     using namespace std::placeholders;
-    namespace echo = spdlog;
 
     class GenField {
       private:
@@ -30,16 +28,8 @@ namespace trailblazer {
 
       public:
         GenField(rclcpp::Node::SharedPtr node) : node_(node) {
-            std::string package_share_directory = ament_index_cpp::get_package_share_directory("farmbot_trailblazer");
-            std::string geojson_path = package_share_directory + "/config/field.geojson";
-
-            geojson_file_ = node_->get_parameter_or<std::string>("geojson_file", geojson_path);
-
-            echo::info("GeoJSON file: {}", geojson_file_);
-
-            // Create the GPS to ENU client, assign it to the client callback group
+            geojson_file_ = node_->get_parameter_or<std::string>("geojson_file", "field.geojson");
             gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
-
             RCLCPP_INFO(node_->get_logger(), "GetTheField Service Node is ready.");
         }
 

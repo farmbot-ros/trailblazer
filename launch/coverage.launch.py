@@ -31,6 +31,7 @@ def launch_setup(context, *args, **kwargs):
             {"path_angle": float(path_angle)} if path_angle != "" else {},
             {"alternate_freq": int(alternate_freq)} if alternate_freq != "" else {},
         ],
+        output="screen",
     )
 
     if is_calculator:
