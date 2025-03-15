@@ -29,7 +29,6 @@ using namespace std::placeholders;
 class GenLines {
   private:
     rclcpp::Node::SharedPtr node_;
-    int alternate_freq_;
     double vehicle_coverage_, path_angle_;
     bool planner_initialized_;
     std::string geojson_file_;
@@ -41,7 +40,8 @@ class GenLines {
     farmbot_interfaces::msg::Lines swaths_msg_;
 
     rclcpp::TimerBase::SharedPtr planner_timer_;
-    rclcpp::TimerBase::SharedPtr just_timer_;
+    rclcpp::TimerBase::SharedPtr gen_lines_timer_;
+    rclcpp::TimerBase::SharedPtr gen_field_timer_;
     rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr get_the_field_client_;
 
     rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr swaths_publisher_;
@@ -60,7 +60,6 @@ class GenLines {
 
     GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
-        alternate_freq_ = node_->get_parameter_or<int>("alternate_freq", 1);
         path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
         geojson_file_ = node_->get_parameter_or<std::string>("geojson_file", "field.geojson");
         // Callback groups
@@ -71,7 +70,8 @@ class GenLines {
         get_the_field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("/field/get_field");
         // Timers
         planner_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::timer_callback, this));
-        just_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::gen_lines, this), service_group_);
+        gen_lines_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::gen_lines, this), service_group_);
+        gen_field_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::gen_field, this), service_group_);
         // Line publisher
         border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
         swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
@@ -81,16 +81,18 @@ class GenLines {
             node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu", qos_profile, client_group_);
     }
 
-    void gen_lines() {
+    void gen_field() {
         getPointsFromGeoJSON(geojson_file_);
         navToEnu(geojson_points_);
+        gen_field_timer_->cancel();
+    }
 
-        while (field_points_.empty() && rclcpp::ok()) {
-            RCLCPP_INFO(node_->get_logger(), "Waiting for field...");
+    void gen_lines() {
+        if (field_points_.empty()) {
+            return;
         }
-        std::vector<std::vector<double>> points = field_points_;
-        genenerate(points);
-        just_timer_->cancel();
+        genenerate();
+        gen_lines_timer_->cancel();
     }
 
   private:
@@ -103,34 +105,21 @@ class GenLines {
         // headlands_publisher_->publish(headlands_msg_);
     }
 
-    void genenerate(std::vector<std::vector<double>> points) {
-        if (points.empty()) {
+    void genenerate() {
+        if (field_points_.empty()) {
             RCLCPP_ERROR(node_->get_logger(), "Failed to get the field");
             return;
         }
 
-        fill_border_msg(points);
-        RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", points.size());
+        fill_border_msg(field_points_);
+        RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", field_points_.size());
 
-        field_ = farmtrax::Field(points);
-        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_, alternate_freq_);
-        //
-        // swaths_.reverse_swaths();
+        field_ = farmtrax::Field(field_points_);
+        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_);
+        auto swaths = swaths_.get_swaths();
+
         RCLCPP_INFO(node_->get_logger(), "Lines generated: %lu", swaths_.get_swaths().size());
-        // // headlands_msg_ = vec_polygon_array(swaths_.get_heardlands());
-        // plan_.plan_out(swaths_.get_swaths(), alternate_freq_, false);
-        // RCLCPP_INFO(this->get_logger(), "Plan generated for %i robots", alternate_freq_);
-        //
-        // for (unsigned long i = 0; i < plan_.get_swaths_vec().size(); i++) {
-        //     auto temp_swath_msg = swaths_to_msg(plan_.get_swaths_vec()[i], "robot" + std::to_string(i));
-        //     swaths_msg_.lines.insert(swaths_msg_.lines.end(), temp_swath_msg.lines.begin(),
-        //     temp_swath_msg.lines.end());
-        // }
-        //
-        // std::vector<farmtrax::Swath> flat_swaths;
-        // for (const auto &swath : plan_.get_swaths_vec()) {
-        //     flat_swaths.insert(flat_swaths.end(), swath.begin(), swath.end());
-        // }
+
         planner_initialized_ = true;
     }
 
@@ -145,6 +134,10 @@ class GenLines {
     }
 
     void navToEnu(const std::vector<std::vector<double>> &navpts) {
+        if (!field_points_.empty()) {
+            return;
+        }
+        std::vector<std::vector<double>> points_;
         auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
         for (const auto &point : navpts) {
             sensor_msgs::msg::NavSatFix gps_point;
@@ -168,10 +161,11 @@ class GenLines {
         auto result = result_future.get();
         auto getres = result->enu;
         for (uint i = 0; i < getres.size(); i++) {
-            field_points_.push_back({getres[i].position.x, getres[i].position.y, getres[i].position.z, navpts[i][0],
-                                     navpts[i][1], navpts[i][2]});
+            points_.push_back({getres[i].position.x, getres[i].position.y, getres[i].position.z, navpts[i][0],
+                               navpts[i][1], navpts[i][2]});
         }
-        RCLCPP_INFO(node_->get_logger(), "Successfully retrieved %zu waypoints.", field_points_.size());
+        RCLCPP_INFO(node_->get_logger(), "Successfully retrieved %zu waypoints.", points_.size());
+        field_points_ = points_;
     }
 
     void fill_border_msg(std::vector<std::vector<double>> points) {
@@ -192,6 +186,34 @@ class GenLines {
             border_msg.geo_line.push_back(geo_p);
 
             border_msg_.lines.push_back(border_msg);
+        }
+    }
+
+    void fill_swaths_msg(farmtrax::Swaths swaths) {
+        RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", swaths.get_swaths().size());
+        for (const auto &swath : swaths.get_swaths()) {
+            farmbot_interfaces::msg::Line swath_msg;
+
+            geometry_msgs::msg::Point loc_p1;
+            loc_p1.x = swath.swath.front().x();
+            loc_p1.y = swath.swath.front().y();
+            swath_msg.loc_line.push_back(loc_p1);
+            // geometry_msgs::msg::Point loc_p2;
+            // loc_p2.x = swath.swath.back().x();
+            // loc_p2.y = swath.swath.back().y();
+            // swath_msg.loc_line.push_back(loc_p2);
+
+            // geometry_msgs::msg::Point geo_p1;
+            // geo_p1.x = swath.swath.front().x();
+            // geo_p1.y = swath.swath.front().y();
+            // swath_msg.geo_line.push_back(geo_p1);
+            //
+            // geometry_msgs::msg::Point geo_p2;
+            // geo_p2.x = swath.swath.back().x();
+            // geo_p2.y = swath.swath.back().y();
+            // swath_msg.geo_line.push_back(geo_p2);
+
+            swaths_msg_.lines.push_back(swath_msg);
         }
     }
 };
