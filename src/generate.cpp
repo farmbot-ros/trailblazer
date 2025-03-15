@@ -101,7 +101,7 @@ class GenLines {
             return;
         }
         border_publisher_->publish(border_msg_);
-        // swaths_publisher_->publish(swaths_msg_);
+        swaths_publisher_->publish(swaths_msg_);
         // headlands_publisher_->publish(headlands_msg_);
     }
 
@@ -117,6 +117,7 @@ class GenLines {
         field_ = farmtrax::Field(field_points_);
         swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_);
         auto swaths = swaths_.get_swaths();
+        fill_swaths_msg(swaths);
 
         RCLCPP_INFO(node_->get_logger(), "Lines generated: %lu", swaths_.get_swaths().size());
 
@@ -189,19 +190,19 @@ class GenLines {
         }
     }
 
-    void fill_swaths_msg(farmtrax::Swaths swaths) {
-        RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", swaths.get_swaths().size());
-        for (const auto &swath : swaths.get_swaths()) {
+    void fill_swaths_msg(std::vector<farmtrax::Swath> swaths) {
+        RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", swaths.size());
+        for (const auto &swath : swaths) {
             farmbot_interfaces::msg::Line swath_msg;
 
             geometry_msgs::msg::Point loc_p1;
             loc_p1.x = swath.swath.front().x();
             loc_p1.y = swath.swath.front().y();
             swath_msg.loc_line.push_back(loc_p1);
-            // geometry_msgs::msg::Point loc_p2;
-            // loc_p2.x = swath.swath.back().x();
-            // loc_p2.y = swath.swath.back().y();
-            // swath_msg.loc_line.push_back(loc_p2);
+            geometry_msgs::msg::Point loc_p2;
+            loc_p2.x = swath.swath.back().x();
+            loc_p2.y = swath.swath.back().y();
+            swath_msg.loc_line.push_back(loc_p2);
 
             // geometry_msgs::msg::Point geo_p1;
             // geo_p1.x = swath.swath.front().x();
