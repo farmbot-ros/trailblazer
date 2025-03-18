@@ -29,9 +29,9 @@ using namespace std::placeholders;
 class GenLines {
   private:
     rclcpp::Node::SharedPtr node_;
+    bool multiagent_;
     double vehicle_coverage_, path_angle_;
-    bool planner_initialized_, multi_robot;
-    bool multi_calc_done_ = true;
+    bool planner_initialized_;
     std::string geojson_file_;
     std::vector<std::vector<double>> field_points_;
     std::vector<std::vector<double>> geojson_points_;
@@ -54,7 +54,7 @@ class GenLines {
     GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
-        multi_robot = node_->get_parameter_or<bool>("multi_robot", false);
+        multiagent_ = node_->get_parameter_or<bool>("multiagent", false);
         // Callback groups
         group_two_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         group_one_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
@@ -62,11 +62,10 @@ class GenLines {
         // Timers
         planner_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::timer_callback, this));
         // Publishers
-        if (multi_robot) {
+        if (multiagent_) {
             RCLCPP_INFO(node_->get_logger(), "Publishing to /field");
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
             swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
-            multi_calc_done_ = false;
             field_subscriber_ = node_->create_subscription<farmbot_interfaces::msg::Field>(
                 "/job/field", 10, std::bind(&GenLines::field_callback, this, std::placeholders::_1), sub_options_);
         } else {
