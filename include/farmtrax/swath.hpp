@@ -130,7 +130,9 @@ namespace farmtrax {
             Polygon fieldPolygon = field.get_polygon();
 
             // Get the **rotated bounding box**
-            Polygon rotatedBoundingBox = get_rotated_bounding_box(fieldPolygon);
+            Polygon rotatedBoundingBox;
+            boost::geometry::convex_hull(fieldPolygon, rotatedBoundingBox);
+            boost::geometry::correct(rotatedBoundingBox); // Ensure a valid polygon
 
             // Convert angle from degrees to radians
             double angle_radians = angle_degrees * M_PI / 180.0;
@@ -162,7 +164,7 @@ namespace farmtrax {
                     }
                     Swath swath;
                     swath.swath = segment;
-                    swath.uuid = generate_UUID(); // Generate unique ID
+                    swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
                     swath.type = SwathType::LINE;
                     swath.length = boost::geometry::length(segment);
 
@@ -237,9 +239,6 @@ namespace farmtrax {
                 throw std::runtime_error("Polygon is invalid after insertion.");
             }
         }
-
-        // Function to generate a unique identifier for each swath
-        std::string generate_UUID() const { return boost::uuids::to_string(boost::uuids::random_generator()()); }
 
         // function that cheks if swath touches perimeter of the field
         bool intersects_field(const LineString &swath, const Field &field) {
