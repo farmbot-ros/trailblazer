@@ -12,14 +12,13 @@ def launch_setup(context, *args, **kwargs):
     namespace = LaunchConfiguration("namespace").perform(context)
     path_angle = LaunchConfiguration("path_angle").perform(context)
     alternate_freq = LaunchConfiguration("alternate_freq").perform(context)
-    calculator = LaunchConfiguration("calculator").perform(context)
+    multiagent = LaunchConfiguration("multiagent").perform(context)
     param_file = os.path.join(
         get_package_share_directory("farmbot_trailblazer"), "config", "params.yaml"
     )
 
+    multiagent = False if multiagent == "0" else True
     nodes_array = []
-    is_calculator = False if calculator == "0" else True
-    # print({'alternate_freq': alternate_freq} if alternate_freq != '' else {})
 
     generate = Node(
         package="farmbot_trailblazer",
@@ -30,13 +29,12 @@ def launch_setup(context, *args, **kwargs):
             yaml.safe_load(open(param_file))["global"]["ros__parameters"],
             {"path_angle": float(path_angle)} if path_angle != "" else {},
             {"alternate_freq": int(alternate_freq)} if alternate_freq != "" else {},
+            {"multiagent": multiagent},
         ],
         output="screen",
     )
 
-    if is_calculator:
-        nodes_array.append(generate)
-
+    nodes_array.append(generate)
     return nodes_array
 
 
@@ -44,14 +42,14 @@ def generate_launch_description():
     namespace_arg = DeclareLaunchArgument("namespace", default_value="fbot")
     path_angle = DeclareLaunchArgument("path_angle", default_value="")
     alternate_freq = DeclareLaunchArgument("alternate_freq", default_value="")
-    calculator = DeclareLaunchArgument("calculator", default_value="0")
+    multiagent = DeclareLaunchArgument("multiagent", default_value="0")
 
     return LaunchDescription(
         [
             namespace_arg,
             path_angle,
             alternate_freq,
-            calculator,
+            multiagent,
             OpaqueFunction(function=launch_setup),
         ]
     )
