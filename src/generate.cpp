@@ -250,7 +250,7 @@ class GenLines {
             geo_p2.y = navs[i + 1][1];
             geo_p2.z = navs[i + 1][2];
             swath_msg.geo_line.push_back(geo_p2);
-            swaths_msg_.lines.push_back(swath_msg);
+
             geometry_msgs::msg::Point loc_p1;
             loc_p1.x = navs[i][3];
             loc_p1.y = navs[i][4];
