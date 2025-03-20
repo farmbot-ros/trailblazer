@@ -18,6 +18,7 @@
 #include "farmbot_interfaces/msg/field.hpp"
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
+#include "farmbot_interfaces/srv/enu2_gps.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 #include "farmbot_trailblazer/utils/geojson.hpp"
 #include "geometry_msgs/msg/point.hpp"
@@ -45,6 +46,7 @@ class GenLines {
     rclcpp::SubscriptionOptions sub_options_;
 
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
+    rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
 
   public:
     farmtrax::Field field_;
@@ -77,6 +79,7 @@ class GenLines {
         }
         // Create the service clients
         gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
+        enu2gps_client_ = node_->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
     }
 
     void field_callback(const farmbot_interfaces::msg::Field::SharedPtr msg) {
@@ -90,7 +93,7 @@ class GenLines {
         } else {
             points_jsonfile(geojson_file_);
         }
-        nav_to_enu(geojson_points_);
+        field_points_ = nav_to_enu(geojson_points_);
         if (field_points_.empty()) {
             return;
         }
@@ -100,7 +103,7 @@ class GenLines {
 
     void gen_field() {
         points_jsonfile(geojson_file_);
-        nav_to_enu(geojson_points_);
+        field_points_ = nav_to_enu(geojson_points_);
         if (field_points_.empty()) {
             return;
         }
@@ -142,7 +145,7 @@ class GenLines {
         }
     }
 
-    void nav_to_enu(const std::vector<std::vector<double>> &navpts) {
+    std::vector<std::vector<double>> nav_to_enu(const std::vector<std::vector<double>> &navpts) {
         std::vector<std::vector<double>> points_;
         auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
         for (const auto &point : navpts) {
@@ -155,15 +158,15 @@ class GenLines {
         while (!gps2enu_client_->wait_for_service(1s)) {
             if (!rclcpp::ok()) {
                 RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                return;
+                return points_;
             }
             RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
         }
-        // Send the request and wait for the result (blocking call)
         auto result_future = gps2enu_client_->async_send_request(request);
         while (rclcpp::ok() && result_future.wait_for(1s) == std::future_status::timeout) {
             RCLCPP_INFO(node_->get_logger(), "Waiting for response from GPS2ENU service...");
         }
+        RCLCPP_INFO(node_->get_logger(), "Successfully recieved GPS2ENU service response.");
         auto result = result_future.get();
         auto getres = result->enu;
         for (uint i = 0; i < getres.size(); i++) {
@@ -171,7 +174,39 @@ class GenLines {
                                navpts[i][1], navpts[i][2]});
         }
         RCLCPP_INFO(node_->get_logger(), "Successfully retrieved %zu waypoints.", points_.size());
-        field_points_ = points_;
+        return points_;
+    }
+
+    std::vector<std::vector<double>> enu_to_nav(const std::vector<std::vector<double>> &points) {
+        std::vector<std::vector<double>> navpts_;
+        auto request = std::make_shared<farmbot_interfaces::srv::Enu2Gps::Request>();
+        for (const auto &point : points) {
+            geometry_msgs::msg::Pose enu_point;
+            enu_point.position.x = point[0];
+            enu_point.position.y = point[1];
+            enu_point.position.z = point[2];
+            request->enu.push_back(enu_point);
+        }
+        while (!enu2gps_client_->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
+                return navpts_;
+            }
+            RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
+        }
+        auto result_future = enu2gps_client_->async_send_request(request);
+        while (rclcpp::ok() && result_future.wait_for(1s) == std::future_status::timeout) {
+            RCLCPP_INFO(node_->get_logger(), "Waiting for response from ENU2GPS service...");
+        }
+        RCLCPP_INFO(node_->get_logger(), "Successfully recieved ENU2GPS service response.");
+        auto result = result_future.get();
+        auto getres = result->gps;
+        for (uint i = 0; i < getres.size(); i++) {
+            navpts_.push_back({getres[i].latitude, getres[i].longitude, getres[i].altitude, points[i][0], points[i][1],
+                               points[i][2]});
+        }
+        RCLCPP_INFO(node_->get_logger(), "Successfully retrieved %zu waypoints.", navpts_.size());
+        return navpts_;
     }
 
     void fill_border_msg(std::vector<std::vector<double>> points) {
@@ -197,24 +232,35 @@ class GenLines {
     void fill_swaths_msg(std::vector<farmtrax::Swath> swaths) {
         swaths_msg_.lines.clear();
         RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", swaths.size());
+        std::vector<std::vector<double>> local_temp;
         for (const auto &swath : swaths) {
+            local_temp.push_back({swath.swath.front().x(), swath.swath.front().y(), .0});
+            local_temp.push_back({swath.swath.back().x(), swath.swath.back().y(), .0});
+        }
+        auto navs = enu_to_nav(local_temp);
+        for (uint i = 0; i < navs.size(); i += 2) {
             farmbot_interfaces::msg::Line swath_msg;
+            geometry_msgs::msg::Point geo_p1;
+            geo_p1.x = navs[i][0];
+            geo_p1.y = navs[i][1];
+            geo_p1.z = navs[i][2];
+            swath_msg.geo_line.push_back(geo_p1);
+            geometry_msgs::msg::Point geo_p2;
+            geo_p2.x = navs[i + 1][0];
+            geo_p2.y = navs[i + 1][1];
+            geo_p2.z = navs[i + 1][2];
+            swath_msg.geo_line.push_back(geo_p2);
+            swaths_msg_.lines.push_back(swath_msg);
             geometry_msgs::msg::Point loc_p1;
-            loc_p1.x = swath.swath.front().x();
-            loc_p1.y = swath.swath.front().y();
+            loc_p1.x = navs[i][3];
+            loc_p1.y = navs[i][4];
+            loc_p1.z = navs[i][5];
             swath_msg.loc_line.push_back(loc_p1);
             geometry_msgs::msg::Point loc_p2;
-            loc_p2.x = swath.swath.back().x();
-            loc_p2.y = swath.swath.back().y();
+            loc_p2.x = navs[i + 1][3];
+            loc_p2.y = navs[i + 1][4];
+            loc_p2.z = navs[i + 1][5];
             swath_msg.loc_line.push_back(loc_p2);
-            // geometry_msgs::msg::Point geo_p1;
-            // geo_p1.x = swath.swath.front().x();
-            // geo_p1.y = swath.swath.front().y();
-            // swath_msg.geo_line.push_back(geo_p1);
-            // geometry_msgs::msg::Point geo_p2;
-            // geo_p2.x = swath.swath.back().x();
-            // geo_p2.y = swath.swath.back().y();
-            // swath_msg.geo_line.push_back(geo_p2);
             swaths_msg_.lines.push_back(swath_msg);
         }
     }
