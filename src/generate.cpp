@@ -29,7 +29,7 @@ using namespace std::placeholders;
 class GenLines {
   private:
     rclcpp::Node::SharedPtr node_;
-    bool multiagent_;
+    bool swarm;
     double vehicle_coverage_, path_angle_;
     bool planner_initialized_;
     std::string geojson_file_;
@@ -54,7 +54,7 @@ class GenLines {
     GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
-        multiagent_ = node_->get_parameter_or<bool>("multiagent", false);
+        swarm = node_->get_parameter_or<bool>("swarm", false);
         // Callback groups
         group_two_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         group_one_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
@@ -62,7 +62,7 @@ class GenLines {
         // Timers
         planner_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::timer_callback, this));
         // Publishers
-        if (multiagent_) {
+        if (swarm) {
             RCLCPP_INFO(node_->get_logger(), "Publishing to /field");
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
             swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
@@ -82,6 +82,7 @@ class GenLines {
     void field_callback(const farmbot_interfaces::msg::Field::SharedPtr msg) {
         RCLCPP_INFO(node_->get_logger(), "Field message received");
         geojson_file_ = msg->geojson_file;
+        geojson_points_.clear();
         if (geojson_file_.empty()) {
             for (const auto &point : msg->field_border) {
                 geojson_points_.push_back({point.x, point.y, point.z});
@@ -174,6 +175,7 @@ class GenLines {
     }
 
     void fill_border_msg(std::vector<std::vector<double>> points) {
+        border_msg_.lines.clear();
         RCLCPP_INFO(node_->get_logger(), "Border received: %lu", points.size());
         for (const auto &point : points) {
             farmbot_interfaces::msg::Line border_msg;
@@ -193,6 +195,7 @@ class GenLines {
     }
 
     void fill_swaths_msg(std::vector<farmtrax::Swath> swaths) {
+        swaths_msg_.lines.clear();
         RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", swaths.size());
         for (const auto &swath : swaths) {
             farmbot_interfaces::msg::Line swath_msg;

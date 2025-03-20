@@ -1,8 +1,13 @@
+#include "farmbot_interfaces/msg/lines.hpp"
 #include <rclcpp/rclcpp.hpp>
 
 class TaskDivider {
   private:
     rclcpp::Node::SharedPtr node;
+    bool swarm;
+
+    rclcpp::Subscription<farmbot_interfaces::msg::Lines>::SharedPtr border_subscriber_;
+    rclcpp::Subscription<farmbot_interfaces::msg::Lines>::SharedPtr swaths_subscriber_;
 
   public:
     TaskDivider(rclcpp::Node::SharedPtr node) : node(node) {}
