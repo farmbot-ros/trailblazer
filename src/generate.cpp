@@ -70,7 +70,7 @@ class GenLines {
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
             swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
             job_subscriber_ = node_->create_subscription<farmbot_interfaces::msg::Job>(
-                "/job", 10, std::bind(&GenLines::job_callback, this, std::placeholders::_1), sub_options_);
+                "/job/auction", 10, std::bind(&GenLines::job_callback, this, std::placeholders::_1), sub_options_);
         } else {
             RCLCPP_INFO(node_->get_logger(), "Publishing to %s/field", node_->get_namespace());
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("field/border", 10);
