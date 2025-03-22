@@ -15,7 +15,8 @@
 #include "farmtrax/route.hpp"
 #include "farmtrax/swath.hpp"
 
-#include "farmbot_interfaces/msg/field.hpp"
+#include "farmbot_interfaces/msg/job.hpp"
+#include "farmbot_interfaces/msg/key_value.hpp"
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
 #include "farmbot_interfaces/srv/enu2_gps.hpp"
@@ -40,7 +41,7 @@ class GenLines {
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
     rclcpp::TimerBase::SharedPtr planner_timer_, gen_field_timer_;
     rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr swaths_publisher_, border_publisher_;
-    rclcpp::Subscription<farmbot_interfaces::msg::Field>::SharedPtr field_subscriber_;
+    rclcpp::Subscription<farmbot_interfaces::msg::Job>::SharedPtr job_subscriber_;
 
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
     rclcpp::SubscriptionOptions sub_options_;
@@ -68,8 +69,8 @@ class GenLines {
             RCLCPP_INFO(node_->get_logger(), "Publishing to /field");
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
             swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
-            field_subscriber_ = node_->create_subscription<farmbot_interfaces::msg::Field>(
-                "/job/field", 10, std::bind(&GenLines::field_callback, this, std::placeholders::_1), sub_options_);
+            job_subscriber_ = node_->create_subscription<farmbot_interfaces::msg::Job>(
+                "/job", 10, std::bind(&GenLines::job_callback, this, std::placeholders::_1), sub_options_);
         } else {
             RCLCPP_INFO(node_->get_logger(), "Publishing to %s/field", node_->get_namespace());
             border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("field/border", 10);
@@ -82,23 +83,27 @@ class GenLines {
         enu2gps_client_ = node_->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
     }
 
-    void field_callback(const farmbot_interfaces::msg::Field::SharedPtr msg) {
-        RCLCPP_INFO(node_->get_logger(), "Field message received");
-        geojson_file_ = msg->geojson_file;
-        geojson_points_.clear();
-        if (geojson_file_.empty()) {
-            for (const auto &point : msg->field_border) {
-                geojson_points_.push_back({point.x, point.y, point.z});
-            }
-        } else {
-            points_jsonfile(geojson_file_);
+    void job_callback(const farmbot_interfaces::msg::Job::SharedPtr msg) {
+        if (msg->job_type != "harvest") {
+            return;
         }
+        RCLCPP_INFO(node_->get_logger(), "Job message received");
+        auto key_value = msg->parameters;
+        for (const auto &kv : key_value) {
+            if (kv.key == "geojson_file") {
+                geojson_file_ = kv.value;
+            }
+        }
+        if (geojson_file_.empty()) {
+            RCLCPP_ERROR(node_->get_logger(), "No geojson file specified");
+            return;
+        }
+        points_jsonfile(geojson_file_);
         field_points_ = nav_to_enu(geojson_points_);
         if (field_points_.empty()) {
             return;
         }
         genenerate_swaths();
-        // field_subscriber_.reset();
     }
 
     void gen_field() {
