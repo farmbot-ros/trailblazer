@@ -3,13 +3,20 @@
 #include "farmbot_interfaces/msg/auction.hpp"
 #include "farmbot_interfaces/msg/bid.hpp"
 #include "farmbot_interfaces/msg/job.hpp"
+#include <cstdlib> // for rand() and srand()
+#include <ctime>   // for time()
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 class Bidder {
   private:
     rclcpp::Node::SharedPtr node;
     std::string namespace_;
+    bool recieved_beacon_;
+    farmbot_interfaces::msg::Agent my_beacon_;
+    int rand_nr;
 
+    rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr beacon_subscriber_;
     rclcpp::Subscription<farmbot_interfaces::msg::Auction>::SharedPtr auction_subscriber_;
     rclcpp::Publisher<farmbot_interfaces::msg::Bid>::SharedPtr bid_publisher_;
 
@@ -21,24 +28,43 @@ class Bidder {
             namespace_ = namespace_.substr(1);
         }
         RCLCPP_INFO(node->get_logger(), "Bidder [%s] started", namespace_.c_str());
+        std::srand(std::time(0) + getpid());
+        rand_nr = rand() % 100;
 
         auction_subscriber_ = node->create_subscription<farmbot_interfaces::msg::Auction>(
             "/job/auction", 10, std::bind(&Bidder::auction_callback, this, std::placeholders::_1));
         bid_publisher_ = node->create_publisher<farmbot_interfaces::msg::Bid>("/job/bid", 10);
-    }
-
-    void auction_callback(const farmbot_interfaces::msg::Auction::SharedPtr msg) {
-        if (msg->job_type != "harvest") {
-            return;
-        }
-        RCLCPP_INFO(node->get_logger(), "Auction with id [%s] received", msg->auction_id.c_str());
-        auto key_value = msg->parameters;
-        for (const auto &kv : key_value) {
-            RCLCPP_INFO(node->get_logger(), "%s: %s", kv.key.c_str(), kv.value.c_str());
-        }
+        beacon_subscriber_ = node->create_subscription<farmbot_interfaces::msg::Agent>(
+            "beacon/rci", 10, std::bind(&Bidder::beacon_callback, this, std::placeholders::_1));
     }
 
   private:
+    void beacon_callback(const farmbot_interfaces::msg::Agent::SharedPtr msg) {
+        my_beacon_ = *msg;
+        RCLCPP_INFO(node->get_logger(), "Beacon [%s] recieved", my_beacon_.name.c_str());
+        recieved_beacon_ = true;
+        beacon_subscriber_.reset();
+    }
+
+    void auction_callback(const farmbot_interfaces::msg::Auction::SharedPtr msg) {
+        if (msg->job_type != "harvest" || !recieved_beacon_) {
+            return;
+        }
+        RCLCPP_INFO_ONCE(node->get_logger(), "Auction with id [%s] received", msg->auction_id.c_str());
+        auto key_value = msg->parameters;
+        for (const auto &kv : key_value) {
+            RCLCPP_INFO_ONCE(node->get_logger(), "%s: %s", kv.key.c_str(), kv.value.c_str());
+        }
+
+        std::string auction_id = msg->auction_id;
+        farmbot_interfaces::msg::Bid bid;
+        bid.agent = my_beacon_;
+        bid.bid = rand_nr;
+        bid.signature = "test";
+        bid.auction_id = auction_id;
+        bid.timestamp = rclcpp::Time(0);
+        bid_publisher_->publish(bid);
+    }
 };
 
 int main(int argc, char *argv[]) {
