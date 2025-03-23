@@ -19,6 +19,7 @@ class Bidder {
     rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr beacon_subscriber_;
     rclcpp::Subscription<farmbot_interfaces::msg::Auction>::SharedPtr auction_subscriber_;
     rclcpp::Publisher<farmbot_interfaces::msg::Bid>::SharedPtr bid_publisher_;
+    rclcpp::Subscription<farmbot_interfaces::msg::Job>::SharedPtr job_subscriber_;
 
   public:
     ~Bidder() {}
@@ -32,10 +33,12 @@ class Bidder {
         rand_nr = rand() % 100;
 
         auction_subscriber_ = node->create_subscription<farmbot_interfaces::msg::Auction>(
-            "/job/auction", 10, std::bind(&Bidder::auction_callback, this, std::placeholders::_1));
+            "/job/auction", 10, std::bind(&Bidder::auction_bid, this, std::placeholders::_1));
         bid_publisher_ = node->create_publisher<farmbot_interfaces::msg::Bid>("/job/bid", 10);
         beacon_subscriber_ = node->create_subscription<farmbot_interfaces::msg::Agent>(
             "beacon/rci", 10, std::bind(&Bidder::beacon_callback, this, std::placeholders::_1));
+        job_subscriber_ = node->create_subscription<farmbot_interfaces::msg::Job>(
+            "/job/job", 10, std::bind(&Bidder::job_assignment, this, std::placeholders::_1));
     }
 
   private:
@@ -46,7 +49,7 @@ class Bidder {
         beacon_subscriber_.reset();
     }
 
-    void auction_callback(const farmbot_interfaces::msg::Auction::SharedPtr msg) {
+    void auction_bid(const farmbot_interfaces::msg::Auction::SharedPtr msg) {
         if (msg->job_type != "harvest" || !recieved_beacon_) {
             return;
         }
@@ -64,6 +67,13 @@ class Bidder {
         bid.auction_id = auction_id;
         bid.timestamp = rclcpp::Time(0);
         bid_publisher_->publish(bid);
+    }
+
+    void job_assignment(const farmbot_interfaces::msg::Job::SharedPtr msg) {
+        if (msg->agent.uuid != my_beacon_.uuid) {
+            return;
+        }
+        RCLCPP_INFO(node->get_logger(), "Job [%s] assigned to [%s]", msg->job_id.c_str(), msg->agent.name.c_str());
     }
 };
 
