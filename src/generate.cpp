@@ -20,7 +20,9 @@
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
 #include "farmbot_interfaces/srv/enu2_gps.hpp"
+#include "farmbot_interfaces/srv/field.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
+
 #include "farmbot_trailblazer/utils/geojson.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
@@ -31,7 +33,6 @@ using namespace std::placeholders;
 class GenLines {
   private:
     rclcpp::Node::SharedPtr node_;
-    bool swarm;
     double vehicle_coverage_, path_angle_;
     bool planner_initialized_;
     std::string geojson_file_;
@@ -39,15 +40,12 @@ class GenLines {
     std::vector<std::vector<double>> geojson_points_;
 
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
-    rclcpp::TimerBase::SharedPtr planner_timer_, gen_field_timer_;
-    rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr swaths_publisher_, border_publisher_;
-    rclcpp::Subscription<farmbot_interfaces::msg::Job>::SharedPtr job_subscriber_;
 
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
-    rclcpp::SubscriptionOptions sub_options_;
 
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
     rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
+    rclcpp::Service<farmbot_interfaces::srv::Field>::SharedPtr field_service_;
 
   public:
     farmtrax::Field field_;
@@ -55,55 +53,39 @@ class GenLines {
     farmtrax::Plan plan_;
 
     GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
+        RCLCPP_INFO(node_->get_logger(), "GENLINES node started");
+
         vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
         path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
-        swarm = node_->get_parameter_or<bool>("swarm", false);
         // Callback groups
         group_two_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         group_one_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-        sub_options_.callback_group = group_one_;
-        // Timers
-        planner_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::timer_callback, this));
-        // Publishers
-        if (swarm) {
-            RCLCPP_INFO(node_->get_logger(), "Publishing to /field");
-            border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
-            swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
-            job_subscriber_ = node_->create_subscription<farmbot_interfaces::msg::Job>(
-                "/job/auction", 10, std::bind(&GenLines::job_callback, this, std::placeholders::_1), sub_options_);
-        } else {
-            RCLCPP_INFO(node_->get_logger(), "Publishing to %s/field", node_->get_namespace());
-            border_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("field/border", 10);
-            swaths_publisher_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("field/swaths", 10);
-            gen_field_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::gen_field, this), group_two_);
-            geojson_file_ = node_->get_parameter_or<std::string>("geojson_file", "field.geojson");
-        }
         // Create the service clients
         gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
         enu2gps_client_ = node_->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
+        // Create the service
+        field_service_ = node_->create_service<farmbot_interfaces::srv::Field>(
+            "pln/field", std::bind(&GenLines::field_callback, this, _1, _2), rmw_qos_profile_services_default,
+            group_one_);
     }
 
-    void job_callback(const farmbot_interfaces::msg::Job::SharedPtr msg) {
-        if (msg->job_type != "harvest") {
-            return;
-        }
-        RCLCPP_INFO(node_->get_logger(), "Job message received");
-        auto key_value = msg->parameters;
-        for (const auto &kv : key_value) {
-            if (kv.key == "geojson_file") {
-                geojson_file_ = kv.value;
-            }
-        }
-        if (geojson_file_.empty()) {
+    void field_callback(std::shared_ptr<farmbot_interfaces::srv::Field::Request> request,
+                        std::shared_ptr<farmbot_interfaces::srv::Field::Response> response) {
+        if (request->geojson_file.empty()) {
             RCLCPP_ERROR(node_->get_logger(), "No geojson file specified");
             return;
         }
-        points_jsonfile(geojson_file_);
-        field_points_ = nav_to_enu(geojson_points_);
-        if (field_points_.empty()) {
-            return;
-        }
-        genenerate_swaths();
+
+        geojson_file_ = request->geojson_file;
+        vehicle_coverage_ = request->vehicle_coverage;
+        path_angle_ = request->path_angle;
+
+        gen_field();
+
+        response->success = true;
+        response->message = "Success";
+        response->border = border_msg_;
+        response->swaths = swaths_msg_;
     }
 
     void gen_field() {
@@ -113,18 +95,9 @@ class GenLines {
             return;
         }
         genenerate_swaths();
-        gen_field_timer_->cancel();
     }
 
   private:
-    void timer_callback() {
-        if (!planner_initialized_) {
-            return;
-        }
-        border_publisher_->publish(border_msg_);
-        swaths_publisher_->publish(swaths_msg_);
-    }
-
     void genenerate_swaths() {
         if (field_points_.empty()) {
             RCLCPP_ERROR(node_->get_logger(), "Failed to get the field");

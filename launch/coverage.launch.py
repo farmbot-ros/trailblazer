@@ -26,8 +26,20 @@ def launch_setup(context, *args, **kwargs):
         ],
         output="screen",
     )
-
     nodes_array.append(bidder)
+
+    generate = Node(
+        package="farmbot_trailblazer",
+        executable="generate",
+        name="generate",
+        namespace=namespace,
+        parameters=[
+            yaml.safe_load(open(param_file))["global"]["ros__parameters"],
+        ],
+        output="screen",
+    )
+    nodes_array.append(generate)
+
     return nodes_array
 
 

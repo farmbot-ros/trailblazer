@@ -27,7 +27,7 @@ install(
 )
 
 set(executables
-    # generate
+    generate
     bidder
 )
 
