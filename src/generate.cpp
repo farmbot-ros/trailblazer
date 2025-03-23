@@ -34,7 +34,8 @@ using namespace std::placeholders;
 class GenLines {
   private:
     rclcpp::Node::SharedPtr node_;
-    double vehicle_coverage_, path_angle_;
+    double vehicle_coverage_ = 3.0;
+    double path_angle_ = 90;
     bool planner_initialized_;
     std::string geojson_file_;
     std::vector<std::vector<double>> field_points_;
@@ -55,9 +56,6 @@ class GenLines {
 
     GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
         RCLCPP_INFO(node_->get_logger(), "GENLINES node started");
-
-        vehicle_coverage_ = node_->get_parameter_or<double>("vehicle_coverage", 3.0);
-        path_angle_ = node_->get_parameter_or<double>("path_angle", 90);
         // Callback groups
         group_two_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         group_one_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
@@ -82,6 +80,9 @@ class GenLines {
         geojson_file_ = request->geojson_file;
         vehicle_coverage_ = request->vehicle_coverage;
         path_angle_ = request->path_angle;
+
+        RCLCPP_INFO(node_->get_logger(), "Generating field with %f vehicle coverage and %f path angle",
+                    vehicle_coverage_, path_angle_);
 
         gen_field();
 
