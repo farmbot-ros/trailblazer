@@ -17,9 +17,8 @@ class Bidder {
   private:
     rclcpp::Node::SharedPtr node_;
     std::string namespace_;
-    bool recieved_beacon_, field_received_;
+    bool recieved_beacon_;
     farmbot_interfaces::msg::Agent my_beacon_;
-    farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
     int rand_nr;
 
     rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr beacon_sub_;
@@ -27,9 +26,6 @@ class Bidder {
     rclcpp::Publisher<farmbot_interfaces::msg::Bid>::SharedPtr bid_pub_;
     rclcpp::Subscription<farmbot_interfaces::msg::Job>::SharedPtr job_sub_;
     rclcpp::SubscriptionOptions job_sub_opts_;
-
-    rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_pub_, swaths_pub_;
-    rclcpp::TimerBase::SharedPtr publsiher_timer_;
 
     rclcpp::Client<farmbot_interfaces::srv::FieldGen>::SharedPtr field_client_;
 
@@ -54,11 +50,7 @@ class Bidder {
         job_sub_ = node->create_subscription<farmbot_interfaces::msg::Job>(
             "/job/job", 10, std::bind(&Bidder::job_assignment, this, _1), job_sub_opts_);
 
-        field_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field");
-
-        border_pub_ = node->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
-        swaths_pub_ = node->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
-        // publsiher_timer_ = node->create_wall_timer(1s, std::bind(&Bidder::publish_lines, this));
+        field_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field_gen");
     }
 
   private:
@@ -119,10 +111,7 @@ class Bidder {
             RCLCPP_INFO(node_->get_logger(), "Waiting for response from Field service...");
         }
         auto result = result_future.get();
-        RCLCPP_INFO(node_->get_logger(), "Recieved %lu swaths", result->swaths.lines.size());
-        border_msg_ = result->border;
-        swaths_msg_ = result->swaths;
-        field_received_ = true;
+        RCLCPP_INFO(node_->get_logger(), "Successfully recieved FieldGen service response.");
     }
 };
 
