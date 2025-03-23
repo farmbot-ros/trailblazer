@@ -41,7 +41,6 @@ class GenLines {
     std::vector<std::vector<double>> geojson_points_;
 
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
-
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
 
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
@@ -86,8 +85,9 @@ class GenLines {
 
         gen_field();
 
-        response->success = true;
         response->message = "Success";
+        response->border = border_msg_;
+        response->swaths = swaths_msg_;
         return;
     }
 

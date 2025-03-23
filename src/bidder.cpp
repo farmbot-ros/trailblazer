@@ -3,6 +3,7 @@
 #include "farmbot_interfaces/msg/auction.hpp"
 #include "farmbot_interfaces/msg/bid.hpp"
 #include "farmbot_interfaces/msg/job.hpp"
+#include "farmbot_interfaces/srv/field.hpp"
 #include "farmbot_interfaces/srv/field_gen.hpp"
 #include <cstdlib> // for rand() and srand()
 #include <ctime>   // for time()
@@ -27,7 +28,8 @@ class Bidder {
     rclcpp::Subscription<farmbot_interfaces::msg::Job>::SharedPtr job_sub_;
     rclcpp::SubscriptionOptions job_sub_opts_;
 
-    rclcpp::Client<farmbot_interfaces::srv::FieldGen>::SharedPtr field_client_;
+    rclcpp::Client<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_client_;
+    rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
 
   public:
     ~Bidder() {}
@@ -50,7 +52,8 @@ class Bidder {
         job_sub_ = node->create_subscription<farmbot_interfaces::msg::Job>(
             "/job/job", 10, std::bind(&Bidder::job_assignment, this, _1), job_sub_opts_);
 
-        field_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field_gen");
+        field_gen_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field_gen");
+        field_client_ = node->create_client<farmbot_interfaces::srv::Field>("pln/field");
     }
 
   private:
@@ -85,20 +88,41 @@ class Bidder {
         job_sub_.reset();
         RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", msg->job_id.c_str(), msg->agent.name.c_str());
 
-        auto field_request = std::make_shared<farmbot_interfaces::srv::FieldGen::Request>();
+        // ------------------- Field generation -------------------
+        auto field_gen_request = std::make_shared<farmbot_interfaces::srv::FieldGen::Request>();
         for (const auto &kv : msg->parameters) {
             if (kv.key == "geojson_file") {
-                field_request->geojson_file = kv.value;
-                RCLCPP_INFO(node_->get_logger(), "Field request %s", field_request->geojson_file.c_str());
+                field_gen_request->geojson_file = kv.value;
+                RCLCPP_INFO(node_->get_logger(), "Field request %s", field_gen_request->geojson_file.c_str());
             } else if (kv.key == "vehicle_coverage") {
-                field_request->vehicle_coverage = std::stod(kv.value);
+                field_gen_request->vehicle_coverage = std::stod(kv.value);
                 RCLCPP_INFO(node_->get_logger(), "Field request %s",
-                            std::to_string(field_request->vehicle_coverage).c_str());
+                            std::to_string(field_gen_request->vehicle_coverage).c_str());
             } else if (kv.key == "path_angle") {
-                field_request->path_angle = std::stod(kv.value);
-                RCLCPP_INFO(node_->get_logger(), "Field request %s", std::to_string(field_request->path_angle).c_str());
+                field_gen_request->path_angle = std::stod(kv.value);
+                RCLCPP_INFO(node_->get_logger(), "Field request %s",
+                            std::to_string(field_gen_request->path_angle).c_str());
             }
         }
+        while (!field_gen_client_->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
+                return;
+            }
+            RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
+        }
+        auto fg_future = field_gen_client_->async_send_request(field_gen_request);
+        while (rclcpp::ok() && fg_future.wait_for(1s) == std::future_status::timeout) {
+            RCLCPP_INFO(node_->get_logger(), "Waiting for response from Field service...");
+        }
+        auto fg_result = fg_future.get();
+        RCLCPP_INFO(node_->get_logger(), "Successfully recieved FieldGen service response.");
+
+        // ------------------- Field Assignement -------------------
+        auto field_request = std::make_shared<farmbot_interfaces::srv::Field::Request>();
+        field_request->agents = msg->agents;
+        field_request->border = fg_result->border;
+        field_request->swaths = fg_result->swaths;
         while (!field_client_->wait_for_service(1s)) {
             if (!rclcpp::ok()) {
                 RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
@@ -106,12 +130,12 @@ class Bidder {
             }
             RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
         }
-        auto result_future = field_client_->async_send_request(field_request);
-        while (rclcpp::ok() && result_future.wait_for(1s) == std::future_status::timeout) {
+        auto f_future = field_client_->async_send_request(field_request);
+        while (rclcpp::ok() && f_future.wait_for(1s) == std::future_status::timeout) {
             RCLCPP_INFO(node_->get_logger(), "Waiting for response from Field service...");
         }
-        auto result = result_future.get();
-        RCLCPP_INFO(node_->get_logger(), "Successfully recieved FieldGen service response.");
+        auto f_result = f_future.get();
+        RCLCPP_INFO(node_->get_logger(), "Successfully recieved Field service response.");
     }
 };
 
