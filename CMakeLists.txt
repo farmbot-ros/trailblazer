@@ -27,8 +27,8 @@ install(
 )
 
 set(executables
-    generate
-    divide
+    # generate
+    bidder
 )
 
 find_package(ament_cmake REQUIRED)
