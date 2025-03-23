@@ -20,7 +20,7 @@
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
 #include "farmbot_interfaces/srv/enu2_gps.hpp"
-#include "farmbot_interfaces/srv/field.hpp"
+#include "farmbot_interfaces/srv/field_gen.hpp"
 #include "farmbot_interfaces/srv/gps2_enu.hpp"
 
 #include "farmbot_trailblazer/utils/geojson.hpp"
@@ -45,7 +45,7 @@ class GenLines {
 
     rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
     rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
-    rclcpp::Service<farmbot_interfaces::srv::Field>::SharedPtr field_service_;
+    rclcpp::Service<farmbot_interfaces::srv::FieldGen>::SharedPtr field_service_;
 
   public:
     farmtrax::Field field_;
@@ -64,13 +64,13 @@ class GenLines {
         gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
         enu2gps_client_ = node_->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
         // Create the service
-        field_service_ = node_->create_service<farmbot_interfaces::srv::Field>(
+        field_service_ = node_->create_service<farmbot_interfaces::srv::FieldGen>(
             "pln/field", std::bind(&GenLines::field_callback, this, _1, _2), rmw_qos_profile_services_default,
             group_one_);
     }
 
-    void field_callback(std::shared_ptr<farmbot_interfaces::srv::Field::Request> request,
-                        std::shared_ptr<farmbot_interfaces::srv::Field::Response> response) {
+    void field_callback(std::shared_ptr<farmbot_interfaces::srv::FieldGen::Request> request,
+                        std::shared_ptr<farmbot_interfaces::srv::FieldGen::Response> response) {
         if (request->geojson_file.empty()) {
             RCLCPP_ERROR(node_->get_logger(), "No geojson file specified");
             return;

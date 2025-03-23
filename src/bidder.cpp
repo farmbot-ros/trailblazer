@@ -3,7 +3,7 @@
 #include "farmbot_interfaces/msg/auction.hpp"
 #include "farmbot_interfaces/msg/bid.hpp"
 #include "farmbot_interfaces/msg/job.hpp"
-#include "farmbot_interfaces/srv/field.hpp"
+#include "farmbot_interfaces/srv/field_gen.hpp"
 #include <cstdlib> // for rand() and srand()
 #include <ctime>   // for time()
 #include <rclcpp/client.hpp>
@@ -17,8 +17,9 @@ class Bidder {
   private:
     rclcpp::Node::SharedPtr node_;
     std::string namespace_;
-    bool recieved_beacon_;
+    bool recieved_beacon_, field_received_;
     farmbot_interfaces::msg::Agent my_beacon_;
+    farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
     int rand_nr;
 
     rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr beacon_sub_;
@@ -27,7 +28,10 @@ class Bidder {
     rclcpp::Subscription<farmbot_interfaces::msg::Job>::SharedPtr job_sub_;
     rclcpp::SubscriptionOptions job_sub_opts_;
 
-    rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
+    rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_pub_, swaths_pub_;
+    rclcpp::TimerBase::SharedPtr publsiher_timer_;
+
+    rclcpp::Client<farmbot_interfaces::srv::FieldGen>::SharedPtr field_client_;
 
   public:
     ~Bidder() {}
@@ -50,7 +54,11 @@ class Bidder {
         job_sub_ = node->create_subscription<farmbot_interfaces::msg::Job>(
             "/job/job", 10, std::bind(&Bidder::job_assignment, this, _1), job_sub_opts_);
 
-        field_client_ = node->create_client<farmbot_interfaces::srv::Field>("pln/field");
+        field_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field");
+
+        border_pub_ = node->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
+        swaths_pub_ = node->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
+        // publsiher_timer_ = node->create_wall_timer(1s, std::bind(&Bidder::publish_lines, this));
     }
 
   private:
@@ -85,7 +93,7 @@ class Bidder {
         job_sub_.reset();
         RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", msg->job_id.c_str(), msg->agent.name.c_str());
 
-        auto field_request = std::make_shared<farmbot_interfaces::srv::Field::Request>();
+        auto field_request = std::make_shared<farmbot_interfaces::srv::FieldGen::Request>();
         for (const auto &kv : msg->parameters) {
             if (kv.key == "geojson_file") {
                 field_request->geojson_file = kv.value;
@@ -110,9 +118,11 @@ class Bidder {
         while (rclcpp::ok() && result_future.wait_for(1s) == std::future_status::timeout) {
             RCLCPP_INFO(node_->get_logger(), "Waiting for response from Field service...");
         }
-        RCLCPP_INFO(node_->get_logger(), "Successfully recieved Field service response.");
         auto result = result_future.get();
         RCLCPP_INFO(node_->get_logger(), "Recieved %lu swaths", result->swaths.lines.size());
+        border_msg_ = result->border;
+        swaths_msg_ = result->swaths;
+        field_received_ = true;
     }
 };
 
