@@ -40,6 +40,18 @@ def launch_setup(context, *args, **kwargs):
     )
     nodes_array.append(generate)
 
+    divider = Node(
+        package="farmbot_trailblazer",
+        executable="divider",
+        name="divider",
+        namespace=namespace,
+        parameters=[
+            yaml.safe_load(open(param_file))["global"]["ros__parameters"],
+        ],
+        output="screen",
+    )
+    nodes_array.append(divider)
+
     return nodes_array
 
 
