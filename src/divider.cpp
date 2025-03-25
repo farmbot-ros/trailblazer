@@ -4,6 +4,8 @@
 #include "farmbot_interfaces/msg/lines.hpp"
 #include "farmbot_interfaces/srv/field.hpp"
 
+#include <unordered_map>
+
 using namespace std::placeholders;
 using namespace std::chrono_literals;
 
@@ -15,10 +17,13 @@ class Divider {
     farmbot_interfaces::msg::Agents agents_list_;
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
 
-    std::vector<std::pair<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr>> all_border_pubs_;
-    std::vector<std::pair<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr>> all_swaths_pubs_;
-    std::vector<std::pair<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr>>
-        all_headland_pubs_;
+    // std::vector<std::pair<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr>> all_border_pubs_;
+    std::unordered_map<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr> swaths_pub_map_;
+    // std::vector<std::pair<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr>> all_swaths_pubs_;
+    std::unordered_map<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr> headland_pub_map_;
+    // std::vector<std::pair<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr>>
+        // all_headland_pubs_;
+    std::unordered_map<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr> border_pub_map_;
 
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
     rclcpp::Service<farmbot_interfaces::srv::Field>::SharedPtr field_service_;
@@ -55,13 +60,15 @@ class Divider {
                 node_->create_publisher<farmbot_interfaces::msg::Lines>("/" + agent.name + "/pln/swaths", 10);
             rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr headland_pub =
                 node_->create_publisher<farmbot_interfaces::msg::Lines>("/" + agent.name + "/pln/headland", 10);
-            all_border_pubs_.push_back(std::make_pair(agent.name, border_pub));
-            all_swaths_pubs_.push_back(std::make_pair(agent.name, swaths_pub));
-            all_headland_pubs_.push_back(std::make_pair(agent.name, headland_pub));
+            border_pub_map_[agent.name] = border_pub;
+            swaths_pub_map_[agent.name] = swaths_pub;
+            headland_pub_map_[agent.name] = headland_pub;
+            // all_border_pubs_.push_back(std::make_pair(agent.name, border_pub));
+            // all_swaths_pubs_.push_back(std::make_pair(agent.name, swaths_pub));
+            // all_headland_pubs_.push_back(std::make_pair(agent.name, headland_pub));
         }
         agents_list_received_ = true;
         RCLCPP_INFO(node_->get_logger(), "Agents list received: %lu", agents_list_.beacons.size());
-        divide_field();
         agents_sub_.reset();
     }
 
@@ -74,12 +81,15 @@ class Divider {
     }
 
     void divider_timer_callback() {
-        if (!agents_list_received_) {
+        if (!agents_list_received_ || !recieved_field_) {
             return;
         }
         for (auto agent : agents_list_.beacons) {
             std::string agent_name = agent.name;
             RCLCPP_INFO(node_->get_logger(), "Publishing to %s", agent_name.c_str());
+            border_pub_map_.at(agent.name)->publish(border_msg_);
+            swaths_pub_map_.at(agent.name)->publish(swaths_msg_);
+            // headland_pub_map_.at(agent.name)->publish(headland_msg_);
             // auto border_pub = all_border_pubs_[agent_name];
             // auto swaths_pub = all_swaths_pubs_[agent_name];
             // border_pub->publish(border_msg_);
@@ -101,6 +111,7 @@ class Divider {
         swaths_msg_ = request->swaths;
         response->message = "Success";
         recieved_field_ = true;
+        divide_field();
     }
 };
 
