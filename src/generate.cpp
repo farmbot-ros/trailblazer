@@ -1,4 +1,3 @@
-#include <chrono>
 #include <json/json.h>
 #include <memory>
 #include <rclcpp/logging.hpp>
@@ -6,17 +5,13 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/subscription_options.hpp>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "farmtrax/field.hpp"
 #include "farmtrax/mesh.hpp"
 #include "farmtrax/plan.hpp"
-#include "farmtrax/route.hpp"
 #include "farmtrax/swath.hpp"
 
-#include "farmbot_interfaces/msg/job.hpp"
-#include "farmbot_interfaces/msg/key_value.hpp"
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
 #include "farmbot_interfaces/srv/enu2_gps.hpp"
@@ -41,6 +36,8 @@ class GenLines {
     std::vector<std::vector<double>> field_points_;
     std::vector<std::vector<double>> geojson_points_;
 
+    rclcpp::QoS qos_ = rclcpp::QoS(rclcpp::KeepLast(1));
+
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
 
@@ -64,8 +61,7 @@ class GenLines {
         enu2gps_client_ = node_->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
         // Create the service
         field_gen_service_ = node_->create_service<farmbot_interfaces::srv::FieldGen>(
-            "pln/field_gen", std::bind(&GenLines::field_callback, this, _1, _2), rmw_qos_profile_services_default,
-            group_one_);
+            "pln/field_gen", std::bind(&GenLines::field_callback, this, _1, _2), qos_, group_one_);
 
         field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("pln/field_msgs");
     }
