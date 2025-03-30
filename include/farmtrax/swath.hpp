@@ -15,10 +15,7 @@
 #include <boost/uuid/uuid_io.hpp>         // streaming operators etc.
 
 #include <cmath>
-#include <map>
-#include <queue>
 #include <string>
-#include <utility> // For std::pair
 #include <vector>
 
 namespace farmtrax {
@@ -31,21 +28,26 @@ namespace farmtrax {
 
     enum class SwathType { LINE, TURN, ROAD };
 
+    struct Headland {
+        Polygon headland;
+        std::string uuid;
+    };
+
     struct Swath {
-        LineString swath; // The actual swath line (geometry)
+        LineString line; // The actual swath line (geometry)
         std::string uuid; // A unique identifier for each swath
         SwathType type;   // The type of swath (LINE, TURN, PATH)
         double length;    // Length of the swath
 
-        bool intersects(const Field &field) const {
+        bool intersects(const Border &field) const {
             Polygon fieldPolygon = field.get_polygon();
-            return bg::intersects(fieldPolygon, swath);
+            return bg::intersects(fieldPolygon, line);
         }
 
         void flip() {
-            LineString reversed_swath = swath;
+            LineString reversed_swath = line;
             std::reverse(reversed_swath.begin(), reversed_swath.end());
-            swath = reversed_swath;
+            line = reversed_swath;
         }
 
         Swath create_swath(const Point &start, const Point &end, SwathType type, std::string uuid = "") {
@@ -60,19 +62,36 @@ namespace farmtrax {
     class Swaths {
       private:
         std::vector<Swath> swaths_; // Holds Swath structs
-        std::vector<Polygon> heardlands_;
+        std::vector<Headland> headlands_;
 
       public:
         Swaths() = default;
 
-        void gen_swaths(const Field &field, double swath_width, double angle_degrees, int number = 0) {
+        void gen_swaths(const Border &field, double swath_width, double angle_degrees, int number = 0) {
             // generate_swaths(field, swath_width, angle_degrees);
             Polygon fieldPolygon = field.get_polygon();
             if (number != 0) {
-                heardlands_ = generate_headlands(swath_width, field.get_polygon(), number);
+                headlands_ = generate_headlands(swath_width, field.get_polygon(), number);
             }
             swaths_ = generate_swaths(fieldPolygon, swath_width, angle_degrees);
             // gen_headlands(swath_width, field.get_polygon(), number);
+        }
+
+        void gen_swaths(const std::vector<std::pair<double, double>> &field_points,
+                        const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &swaths,
+                        int headlands) {
+            Polygon field_pts;
+            for (const auto &point : field_points) {
+                field_pts.outer().emplace_back(point.first, point.second);
+            }
+
+            headlands_ = generate_headlands(3, field_pts, headlands);
+            auto last_headland = headlands_.back();
+            Polygon field_pts_;
+            for (const auto &point : last_headland.headland.outer()) {
+                field_pts_.outer().emplace_back(point.x(), point.y());
+            }
+            swaths_ = gen_swaths(swaths, field_pts_);
         }
 
         // Get the swaths as a vector of Swath structs
@@ -81,13 +100,44 @@ namespace farmtrax {
         // gange the swath order from last to first
         void reverse_swaths() { std::reverse(swaths_.begin(), swaths_.end()); }
 
-        std::vector<Polygon> generate_headlands(double x, Polygon polygon_, int number = 1) const {
+        std::vector<Swath>
+        gen_swaths(const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &pair_array,
+                   Polygon field) {
+            std::vector<Swath> swaths;
+            for (const auto &swath : pair_array) {
+                LineString line = generate_swathine(Point(swath.first.first, swath.first.second),
+                                                    Point(swath.second.first, swath.second.second));
+
+                std::vector<LineString> clipped;
+                boost::geometry::intersection(line, field, clipped);
+
+                for (const auto &segment : clipped) {
+                    auto swath_width = boost::geometry::length(segment);
+                    if (boost::geometry::length(segment) < swath_width) {
+                        continue; // Ignore very short swaths
+                    }
+                    Swath swath;
+                    swath.line = segment;
+                    swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
+                    swath.type = SwathType::LINE;
+                    swath.length = boost::geometry::length(segment);
+
+                    swaths.push_back(swath);
+
+                    insert_point_at_closest_location(field, segment.front());
+                    insert_point_at_closest_location(field, segment.back());
+                }
+            }
+            return swaths;
+        }
+
+        std::vector<Headland> generate_headlands(double x, Polygon polygon_, int number = 1) const {
             if (x < 0) {
                 throw std::invalid_argument("Shrink distance must be non-negative.");
             }
-            std::vector<Polygon> polygon_array;
+            std::vector<Headland> headland_array;
             for (int i = 0; i < number; i++) {
-                auto polygon = i == 0 ? polygon_ : polygon_array.back();
+                auto polygon = i == 0 ? polygon_ : headland_array.back().headland;
                 // Define buffer strategies with straight edges
                 bg::strategy::buffer::distance_symmetric<double> distance_strategy(-x);
                 bg::strategy::buffer::side_straight side_strategy;
@@ -117,16 +167,17 @@ namespace farmtrax {
                 }
                 Polygon simplifiedPolygon = *largest;
                 remove_colinear_points(simplifiedPolygon, 0.0001);
-                polygon_array.push_back(simplifiedPolygon);
+                headland_array.push_back(
+                    {simplifiedPolygon, boost::uuids::to_string(boost::uuids::random_generator()())});
             }
-            return polygon_array;
+            return headland_array;
         }
 
         // Helper function to generate swaths with a specified angle
         std::vector<Swath> generate_swaths(Polygon &polygon, double swath_width, double angle_degrees) {
             std::vector<Swath> swaths;
 
-            Field field = Field(polygon);
+            Border field = Border(polygon);
             Polygon fieldPolygon = field.get_polygon();
 
             // Get the **rotated bounding box**
@@ -163,7 +214,7 @@ namespace farmtrax {
                         continue; // Ignore very short swaths
                     }
                     Swath swath;
-                    swath.swath = segment;
+                    swath.line = segment;
                     swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
                     swath.type = SwathType::LINE;
                     swath.length = boost::geometry::length(segment);
@@ -193,6 +244,18 @@ namespace farmtrax {
 
             Point newEnd(centerPoint.x() + (offset * sin_angle) + (length * cos_angle),
                          centerPoint.y() - (offset * cos_angle) + (length * sin_angle));
+
+            // Add the new start and end points to the swath line
+            swathLine.push_back(newStart);
+            swathLine.push_back(newEnd);
+
+            return swathLine;
+        }
+
+        LineString generate_swathine(const Point &first, const Point &second) const {
+            LineString swathLine;
+            Point newStart(first.x(), first.y());
+            Point newEnd(second.x(), second.y());
 
             // Add the new start and end points to the swath line
             swathLine.push_back(newStart);
@@ -241,7 +304,7 @@ namespace farmtrax {
         }
 
         // function that cheks if swath touches perimeter of the field
-        bool intersects_field(const LineString &swath, const Field &field) {
+        bool intersects_field(const LineString &swath, const Border &field) {
             auto edges = field.get_edges();
             for (const auto &edge : edges) {
                 if (bg::intersects(swath, edge)) {

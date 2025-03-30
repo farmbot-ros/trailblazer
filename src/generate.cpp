@@ -47,7 +47,7 @@ class GenLines {
     rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
 
   public:
-    farmtrax::Field field_;
+    farmtrax::Border field_;
     farmtrax::Swaths swaths_;
     farmtrax::Plan plan_;
 
@@ -105,7 +105,7 @@ class GenLines {
         }
         fill_border_msg(field_points_);
         RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", field_points_.size());
-        field_ = farmtrax::Field(field_points_);
+        field_ = farmtrax::Border(field_points_);
         swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_);
         auto swaths = swaths_.get_swaths();
         fill_swaths_msg(swaths);
@@ -212,8 +212,8 @@ class GenLines {
         RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", swaths.size());
         std::vector<std::vector<double>> local_temp;
         for (const auto &swath : swaths) {
-            local_temp.push_back({swath.swath.front().x(), swath.swath.front().y(), .0});
-            local_temp.push_back({swath.swath.back().x(), swath.swath.back().y(), .0});
+            local_temp.push_back({swath.line.front().x(), swath.line.front().y(), .0});
+            local_temp.push_back({swath.line.back().x(), swath.line.back().y(), .0});
         }
         auto navs = enu_to_nav(local_temp);
         for (uint i = 0; i < navs.size(); i += 2) {

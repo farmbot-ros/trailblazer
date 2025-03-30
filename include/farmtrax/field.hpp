@@ -1,7 +1,6 @@
 #ifndef FIELD_HPP
 #define FIELD_HPP
 
-#include <algorithm>
 #include <boost/geometry.hpp>
 #include <boost/geometry/geometries/linestring.hpp>
 #include <boost/geometry/geometries/point_xy.hpp>
@@ -54,8 +53,7 @@ namespace farmtrax {
         std::vector<point_type> new_points;
         auto const &points = polygon.outer();
 
-        if (points.size() < 4)
-            return; // Need at least 3 distinct points (excluding duplicate endpoint)
+        if (points.size() < 4) return; // Need at least 3 distinct points (excluding duplicate endpoint)
 
         // Since the polygon is closed, the first and last points are the same.
         // We iterate excluding the duplicate last point.
@@ -79,10 +77,9 @@ namespace farmtrax {
         polygon.outer().assign(new_points.begin(), new_points.end());
     }
 
-    class Field {
+    class Border {
       private:
         Polygon polygon_;
-        Rtree rtree_;                   // R-tree for efficient spatial querying of polygon edges
         std::vector<LineString> edges_; // Store the edges for precise intersection
         double width_;
         double height_;
@@ -91,12 +88,12 @@ namespace farmtrax {
 
       public:
         // Constructors
-        Field() = default;
+        Border() = default;
 
         // Initialize with a list of (x, y) coordinates
-        Field(const std::vector<std::pair<double, double>> &coordinates) { gen_field(coordinates); }
+        Border(const std::vector<std::pair<double, double>> &coordinates) { gen_field(coordinates); }
 
-        Field(const std::vector<std::vector<double>> &coordinates) {
+        Border(const std::vector<std::vector<double>> &coordinates) {
             std::vector<std::pair<double, double>> points;
             for (const auto &coord : coordinates) {
                 points.emplace_back(coord[0], coord[1]);
@@ -104,7 +101,7 @@ namespace farmtrax {
             gen_field(points);
         }
 
-        Field(const Polygon &polygon) {
+        Border(const Polygon &polygon) {
             std::vector<std::pair<double, double>> points;
             for (const auto &point : polygon.outer()) {
                 points.emplace_back(point.x(), point.y());
@@ -136,8 +133,6 @@ namespace farmtrax {
                 // Compute the envelope of the edge
                 Box box;
                 bg::envelope(edge, box);
-                // Insert the box and index into the R-tree
-                rtree_.insert(std::make_pair(box, i));
                 // Store the edge for precise intersection checks
                 edges_.push_back(edge);
             }
@@ -198,25 +193,7 @@ namespace farmtrax {
         // Check if a linestring is inside the field
         bool contains(const LineString &line) const { return bg::within(line, polygon_); }
 
-        // Check if a LineString intersects the polygon using the R-tree
-        bool intersects(const LineString &line) const {
-            // Compute the envelope of the connection
-            Box connection_box;
-            bg::envelope(line, connection_box);
-            // Query the R-tree for candidate edges whose boxes intersect the connection's box
-            std::vector<RtreeValue> results;
-            rtree_.query(bgi::intersects(connection_box), std::back_inserter(results));
-            // For each candidate edge, check if it intersects with the connection LineString
-            for (const auto &value : results) {
-                const LineString &edge = edges_[value.second];
-                if (bg::intersects(line, edge)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        Field get_buffered(double distance, BufferType type) const {
+        Border get_buffered(double distance, BufferType type) const {
             switch (type) {
             case BufferType::SHRINK:
                 return get_shrunk_field(distance);
@@ -235,7 +212,7 @@ namespace farmtrax {
 
       private:
         // Generate a new Field that is "x" meters smaller from every border
-        Field get_shrunk_field(double x) const {
+        Border get_shrunk_field(double x) const {
             if (x < 0) {
                 throw std::invalid_argument("Shrink distance must be non-negative.");
             }
@@ -274,7 +251,7 @@ namespace farmtrax {
             remove_colinear_points(simplifiedPolygon, colinear_threshold_);
 
             // Convert the largest polygon back to a Field
-            Field shrunkField;
+            Border shrunkField;
             std::vector<std::pair<double, double>> shrunkBoundary;
             for (const auto &point : simplifiedPolygon.outer()) {
                 shrunkBoundary.emplace_back(point.x(), point.y());
@@ -284,7 +261,7 @@ namespace farmtrax {
         }
 
         // Generate a new Field that is "x" meters larger from every border
-        Field get_enlarged_field(double x) const {
+        Border get_enlarged_field(double x) const {
             if (x < 0) {
                 throw std::invalid_argument("Enlargement distance must be non-negative.");
             }
@@ -321,7 +298,7 @@ namespace farmtrax {
             remove_colinear_points(simplifiedPolygon, colinear_threshold_);
 
             // Convert the largest polygon back to a Field
-            Field enlargedField;
+            Border enlargedField;
             std::vector<std::pair<double, double>> enlargedBoundary;
             for (const auto &point : simplifiedPolygon.outer()) {
                 enlargedBoundary.emplace_back(point.x(), point.y());

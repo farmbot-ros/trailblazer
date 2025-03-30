@@ -106,8 +106,8 @@ namespace farmtrax {
 
             // First, add edges for each swath from its start to end point
             for (const auto &swath : swaths_) {
-                const Point &start_point = swath.swath.front();
-                const Point &end_point = swath.swath.back();
+                const Point &start_point = swath.line.front();
+                const Point &end_point = swath.line.back();
 
                 boost::graph_traits<Graph>::vertex_descriptor start_vertex = get_or_create_vertex(start_point);
                 boost::graph_traits<Graph>::vertex_descriptor end_vertex = get_or_create_vertex(end_point);
@@ -123,14 +123,14 @@ namespace farmtrax {
             // Now, connect each swath's end to every other swath's start (excluding itself)
             const auto &swaths_list = swaths_;
             for (const auto &swath_i : swaths_list) {
-                const Point &end_point_i = swath_i.swath.back();
+                const Point &end_point_i = swath_i.line.back();
                 boost::graph_traits<Graph>::vertex_descriptor end_vertex_i = get_or_create_vertex(end_point_i);
 
                 for (const auto &swath_j : swaths_list) {
                     if (swath_i.uuid == swath_j.uuid) {
                         continue; // Skip if it's the same swath
                     }
-                    const Point &start_point_j = swath_j.swath.front();
+                    const Point &start_point_j = swath_j.line.front();
                     boost::graph_traits<Graph>::vertex_descriptor start_vertex_j = get_or_create_vertex(start_point_j);
 
                     // Check if edge from end_vertex_i to start_vertex_j already exists
@@ -140,8 +140,8 @@ namespace farmtrax {
                         // Create a connection swath representing the turn (from end of swath_i to start of swath_j)
                         Swath connection_swath;
                         connection_swath.type = SwathType::TURN; // Assuming TURN is the type for these connections
-                        connection_swath.swath.push_back(end_point_i);
-                        connection_swath.swath.push_back(start_point_j);
+                        connection_swath.line.push_back(end_point_i);
+                        connection_swath.line.push_back(start_point_j);
                         connection_swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
 
                         EdgeProperties props(connection_swath, weight);
