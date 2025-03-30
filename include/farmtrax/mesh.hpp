@@ -1,8 +1,7 @@
 #ifndef MESH_HPP
 #define MESH_HPP
 
-#include "border.hpp"
-#include "swath.hpp"
+#include "field.hpp"
 #include <boost/geometry.hpp>
 #include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/geometries/segment.hpp>

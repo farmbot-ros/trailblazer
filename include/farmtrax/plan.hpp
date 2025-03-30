@@ -1,8 +1,8 @@
 #ifndef PLAN_HPP
 #define PLAN_HPP
 
+#include "field.hpp"
 #include "mesh.hpp"
-#include "swath.hpp"
 #include <algorithm>
 #include <boost/graph/graph_traits.hpp>
 #include <cmath>

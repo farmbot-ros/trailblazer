@@ -1,7 +1,6 @@
-#ifndef SWATH_HPP
-#define SWATH_HPP
+#ifndef LINE_HPP
+#define LINE_HPP
 
-#include "border.hpp"
 #include <algorithm>
 #include <boost/geometry.hpp>
 #include <boost/geometry/algorithms/distance.hpp>
@@ -26,38 +25,139 @@ namespace farmtrax {
     typedef bg::model::box<Point> Box;
     typedef bg::model::multi_polygon<Polygon> Multipolygon;
 
-    enum class SwathType { LINE, TURN, ROAD };
+    // Function to check if three points are colinear
+    template <typename Point>
+    bool are_colinear(const Point &p1, const Point &p2, const Point &p3, double epsilon = 1e-10) {
+        // Calculate the area of the triangle formed by the three points
+        // If the area is zero (or close to zero), the points are colinear
 
+        auto area = (boost::geometry::get<0>(p1) * (boost::geometry::get<1>(p2) - boost::geometry::get<1>(p3)) +
+                     boost::geometry::get<0>(p2) * (boost::geometry::get<1>(p3) - boost::geometry::get<1>(p1)) +
+                     boost::geometry::get<0>(p3) * (boost::geometry::get<1>(p1) - boost::geometry::get<1>(p2))) /
+                    2.0;
+
+        return std::abs(area) < epsilon;
+    }
+
+    // Function to remove colinear points from a polygon
+    template <typename Polygon> void remove_colinear_points(Polygon &polygon, double epsilon = 0.01) {
+        using point_type = typename boost::geometry::point_type<Polygon>::type;
+        std::vector<point_type> new_points;
+        auto const &points = polygon.outer();
+
+        if (points.size() < 4) return; // Need at least 3 distinct points (excluding duplicate endpoint)
+
+        // Since the polygon is closed, the first and last points are the same.
+        // We iterate excluding the duplicate last point.
+        size_t n = points.size() - 1;
+        for (size_t i = 0; i < n; ++i) {
+            const point_type &prev = points[(i + n - 1) % n];
+            const point_type &curr = points[i];
+            const point_type &next = points[(i + 1) % n];
+
+            if (!are_colinear(prev, curr, next, epsilon)) {
+                new_points.push_back(curr);
+            }
+            // If colinear, skip the current point
+        }
+
+        // Close the polygon by adding the first point at the end
+        if (!new_points.empty()) {
+            new_points.push_back(new_points.front());
+        }
+
+        polygon.outer().assign(new_points.begin(), new_points.end());
+    }
+
+    class Border {
+      private:
+        Polygon polygon_;
+
+      public:
+        // Constructors
+        Border() = default;
+
+        // Initialize with a list of (x, y) coordinates
+        Border(const std::vector<std::pair<double, double>> &coordinates) { gen_field(coordinates); }
+
+        Border(const std::vector<std::vector<double>> &coordinates) {
+            std::vector<std::pair<double, double>> points;
+            for (const auto &coord : coordinates) {
+                points.emplace_back(coord[0], coord[1]);
+            }
+            gen_field(points);
+        }
+
+        Border(const Polygon &polygon) {
+            std::vector<std::pair<double, double>> points;
+            for (const auto &point : polygon.outer()) {
+                points.emplace_back(point.x(), point.y());
+            }
+            gen_field(points);
+        }
+        const Polygon &get_polygon() const { return polygon_; }
+
+        // Set the boundary of the field using a list of (x, y) coordinates
+        void gen_field(const std::vector<std::pair<double, double>> &coordinates) {
+            if (coordinates.size() < 3) {
+                throw std::invalid_argument("A polygon must have at least 3 points.");
+            }
+            polygon_.outer().clear();
+            for (const auto &coord : coordinates) {
+                polygon_.outer().emplace_back(coord.first, coord.second);
+            }
+            // Ensure the polygon is closed
+            if (!bg::equals(polygon_.outer().front(), polygon_.outer().back())) {
+                polygon_.outer().emplace_back(polygon_.outer().front());
+            }
+            // Correct the polygon's orientation and closure
+            bg::correct(polygon_);
+            // After setting the boundary, insert the polygon's edges into the R-tree
+            const auto &outer_ring = polygon_.outer();
+            for (std::size_t i = 0; i < outer_ring.size() - 1; ++i) {
+                LineString edge;
+                bg::append(edge, outer_ring[i]);
+                bg::append(edge, outer_ring[i + 1]);
+                // Compute the envelope of the edge
+                Box box;
+                bg::envelope(edge, box);
+            }
+            // Compute the width and height of the field
+            Box bbox;
+            bg::envelope(polygon_, bbox);
+        }
+    };
+
+    // Struct to represent a headland
     struct Headland {
         Polygon headland;
         std::string uuid;
     };
 
+    // Enum to define different swath types
+    enum class SwathType { LINE, TURN, ROAD };
+
+    // Struct to represent a swath
     struct Swath {
         LineString line;  // The actual swath line (geometry)
         std::string uuid; // A unique identifier for each swath
         SwathType type;   // The type of swath (LINE, TURN, PATH)
         double length;    // Length of the swath
 
-        bool intersects(const Border &field) const {
-            Polygon fieldPolygon = field.get_polygon();
-            return bg::intersects(fieldPolygon, line);
-        }
-
         void flip() {
             LineString reversed_swath = line;
             std::reverse(reversed_swath.begin(), reversed_swath.end());
             line = reversed_swath;
         }
-
-        Swath create_swath(const Point &start, const Point &end, SwathType type, std::string uuid = "") {
-            LineString line;
-            bg::append(line, start);
-            bg::append(line, end);
-            std::string uuid_ = uuid.empty() ? boost::uuids::to_string(boost::uuids::random_generator()()) : uuid;
-            return {line, uuid_, type, 0.0};
-        }
     };
+
+    Swath inline create_swath(const Point &start, const Point &end, SwathType type, std::string uuid = "") {
+        LineString line;
+        bg::append(line, start);
+        bg::append(line, end);
+        std::string uuid_ = uuid.empty() ? boost::uuids::to_string(boost::uuids::random_generator()()) : uuid;
+        return {line, uuid_, type, 0.0};
+    }
 
     class Field {
       private:
@@ -67,26 +167,35 @@ namespace farmtrax {
       public:
         Field() = default;
 
-        void gen_swaths(const Border &field, double swath_width, double angle_degrees, int number = 0) {
+        void gen_field(const Border &border, double swath_width, double angle_degrees, int number = 0) {
             // generate_swaths(field, swath_width, angle_degrees);
-            Polygon fieldPolygon = field.get_polygon();
+            Polygon fieldPolygon = border.get_polygon();
             if (number != 0) {
-                headlands_ = generate_headlands(swath_width, field.get_polygon(), number);
+                headlands_ = generate_headlands(swath_width, border.get_polygon(), number);
             }
             swaths_ = generate_swaths(fieldPolygon, swath_width, angle_degrees);
             // gen_headlands(swath_width, field.get_polygon(), number);
         }
 
-        void gen_swaths(const std::vector<std::pair<double, double>> &field_points,
-                        const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &swaths,
-                        int headlands) {
-            Polygon field_pts;
-            for (const auto &point : field_points) {
-                field_pts.outer().emplace_back(point.first, point.second);
-            }
+        void gen_field(const Border &border,
+                       const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &swaths,
+                       double swath_width, int number) {
 
-            headlands_ = generate_headlands(3, field_pts, headlands);
+            headlands_ = generate_headlands(swath_width, border.get_polygon(), number);
             auto last_headland = headlands_.back();
+
+            Polygon field_pts_;
+            for (const auto &point : last_headland.headland.outer()) {
+                field_pts_.outer().emplace_back(point.x(), point.y());
+            }
+            swaths_ = gen_swaths(swaths, field_pts_);
+        }
+
+        void gen_field(const Border &border, const std::vector<Swath> &swaths, double swath_width, int number) {
+
+            headlands_ = generate_headlands(swath_width, border.get_polygon(), number);
+            auto last_headland = headlands_.back();
+
             Polygon field_pts_;
             for (const auto &point : last_headland.headland.outer()) {
                 field_pts_.outer().emplace_back(point.x(), point.y());
@@ -99,37 +208,6 @@ namespace farmtrax {
 
         // gange the swath order from last to first
         void reverse_swaths() { std::reverse(swaths_.begin(), swaths_.end()); }
-
-        std::vector<Swath>
-        gen_swaths(const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &pair_array,
-                   Polygon field) {
-            std::vector<Swath> swaths;
-            for (const auto &swath : pair_array) {
-                LineString line = generate_swathine(Point(swath.first.first, swath.first.second),
-                                                    Point(swath.second.first, swath.second.second));
-
-                std::vector<LineString> clipped;
-                boost::geometry::intersection(line, field, clipped);
-
-                for (const auto &segment : clipped) {
-                    auto swath_width = boost::geometry::length(segment);
-                    if (boost::geometry::length(segment) < swath_width) {
-                        continue; // Ignore very short swaths
-                    }
-                    Swath swath;
-                    swath.line = segment;
-                    swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
-                    swath.type = SwathType::LINE;
-                    swath.length = boost::geometry::length(segment);
-
-                    swaths.push_back(swath);
-
-                    insert_point_at_closest_location(field, segment.front());
-                    insert_point_at_closest_location(field, segment.back());
-                }
-            }
-            return swaths;
-        }
 
         std::vector<Headland> generate_headlands(double x, Polygon polygon_, int number = 1) const {
             if (x < 0) {
@@ -171,6 +249,65 @@ namespace farmtrax {
                     {simplifiedPolygon, boost::uuids::to_string(boost::uuids::random_generator()())});
             }
             return headland_array;
+        }
+
+        std::vector<Swath> gen_swaths(const std::vector<Swath> &swaths, Polygon field) {
+            std::vector<Swath> swaths_;
+            for (const auto &swathy : swaths) {
+                LineString line = swathy.line;
+
+                std::vector<LineString> clipped;
+                boost::geometry::intersection(line, field, clipped);
+
+                for (const auto &segment : clipped) {
+                    auto swath_width = boost::geometry::length(segment);
+                    if (boost::geometry::length(segment) < swath_width) {
+                        continue; // Ignore very short swaths
+                    }
+                    Swath swath;
+                    swath.line = segment;
+                    swath.uuid = swathy.uuid;
+                    swath.type = SwathType::LINE;
+                    swath.length = boost::geometry::length(segment);
+
+                    swaths_.push_back(swath);
+
+                    insert_point_at_closest_location(field, segment.front());
+                    insert_point_at_closest_location(field, segment.back());
+                }
+            }
+            return swaths_;
+        }
+
+        std::vector<Swath>
+        gen_swaths(const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &pair_array,
+                   Polygon field) {
+            std::vector<Swath> swaths;
+            for (const auto &swath : pair_array) {
+                LineString line = generate_swathine(Point(swath.first.first, swath.first.second),
+                                                    Point(swath.second.first, swath.second.second));
+
+                std::vector<LineString> clipped;
+                boost::geometry::intersection(line, field, clipped);
+
+                for (const auto &segment : clipped) {
+                    auto swath_width = boost::geometry::length(segment);
+                    if (boost::geometry::length(segment) < swath_width) {
+                        continue; // Ignore very short swaths
+                    }
+                    Swath swath;
+                    swath.line = segment;
+                    swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
+                    swath.type = SwathType::LINE;
+                    swath.length = boost::geometry::length(segment);
+
+                    swaths.push_back(swath);
+
+                    insert_point_at_closest_location(field, segment.front());
+                    insert_point_at_closest_location(field, segment.back());
+                }
+            }
+            return swaths;
         }
 
         // Helper function to generate swaths with a specified angle
@@ -303,17 +440,6 @@ namespace farmtrax {
             }
         }
 
-        // function that cheks if swath touches perimeter of the field
-        bool intersects_field(const LineString &swath, const Border &field) {
-            auto edges = field.get_edges();
-            for (const auto &edge : edges) {
-                if (bg::intersects(swath, edge)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         Polygon get_rotated_bounding_box(const Polygon &polygon) {
             Polygon hullPolygon;
             boost::geometry::convex_hull(polygon, hullPolygon);
@@ -324,4 +450,4 @@ namespace farmtrax {
 
 } // namespace farmtrax
 
-#endif // SWATH_HPP
+#endif // LINE_HPP
