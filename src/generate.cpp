@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "farmtrax/field.hpp"
+#include "farmtrax/border.hpp"
 #include "farmtrax/mesh.hpp"
 #include "farmtrax/plan.hpp"
 #include "farmtrax/swath.hpp"
@@ -47,8 +47,8 @@ class GenLines {
     rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
 
   public:
-    farmtrax::Border field_;
-    farmtrax::Swaths swaths_;
+    farmtrax::Border border_;
+    farmtrax::Field swaths_;
     farmtrax::Plan plan_;
 
     GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
@@ -105,8 +105,8 @@ class GenLines {
         }
         fill_border_msg(field_points_);
         RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", field_points_.size());
-        field_ = farmtrax::Border(field_points_);
-        swaths_.gen_swaths(field_, vehicle_coverage_, path_angle_);
+        border_ = farmtrax::Border(field_points_);
+        swaths_.gen_swaths(border_, vehicle_coverage_, path_angle_);
         auto swaths = swaths_.get_swaths();
         fill_swaths_msg(swaths);
         RCLCPP_INFO(node_->get_logger(), "Lines generated: %lu", swaths_.get_swaths().size());

@@ -1,7 +1,7 @@
 #ifndef SWATH_HPP
 #define SWATH_HPP
 
-#include "field.hpp"
+#include "border.hpp"
 #include <algorithm>
 #include <boost/geometry.hpp>
 #include <boost/geometry/algorithms/distance.hpp>
@@ -34,7 +34,7 @@ namespace farmtrax {
     };
 
     struct Swath {
-        LineString line; // The actual swath line (geometry)
+        LineString line;  // The actual swath line (geometry)
         std::string uuid; // A unique identifier for each swath
         SwathType type;   // The type of swath (LINE, TURN, PATH)
         double length;    // Length of the swath
@@ -59,13 +59,13 @@ namespace farmtrax {
         }
     };
 
-    class Swaths {
+    class Field {
       private:
         std::vector<Swath> swaths_; // Holds Swath structs
         std::vector<Headland> headlands_;
 
       public:
-        Swaths() = default;
+        Field() = default;
 
         void gen_swaths(const Border &field, double swath_width, double angle_degrees, int number = 0) {
             // generate_swaths(field, swath_width, angle_degrees);

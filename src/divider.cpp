@@ -20,7 +20,7 @@ class Divider {
     farmbot_interfaces::msg::Agents agents_list_;
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
 
-    farmtrax::Swaths swaths;
+    farmtrax::Field swaths;
 
     std::unordered_map<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr> swaths_pub_map_;
     std::unordered_map<std::string, rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr> headland_pub_map_;

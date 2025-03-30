@@ -1,7 +1,7 @@
 #ifndef MESH_HPP
 #define MESH_HPP
 
-#include "field.hpp"
+#include "border.hpp"
 #include "swath.hpp"
 #include <boost/geometry.hpp>
 #include <boost/geometry/algorithms/distance.hpp>
@@ -177,8 +177,7 @@ namespace farmtrax {
                 const Point &tp = graph_[t].point;
                 const EdgeProperties &props = graph_[e];
                 oss << "Edge " << e << ": (" << sp.x() << ", " << sp.y() << ") -> (" << tp.x() << ", " << tp.y() << ")";
-                oss << "("
-                    << "swath: " << props.swath.uuid << ", type: " << static_cast<int>(props.swath.type)
+                oss << "(" << "swath: " << props.swath.uuid << ", type: " << static_cast<int>(props.swath.type)
                     << ", weight: " << props.weight << ")" << std::endl;
             }
 
@@ -206,8 +205,7 @@ namespace farmtrax {
                     const EdgeProperties &props = graph_[e];
                     oss << "\tEdge " << e << ": (" << p.x() << ", " << p.y() << ") -> (" << tp.x() << ", " << tp.y()
                         << ")";
-                    oss << "("
-                        << "swath: " << props.swath.uuid << ", type: " << static_cast<int>(props.swath.type)
+                    oss << "(" << "swath: " << props.swath.uuid << ", type: " << static_cast<int>(props.swath.type)
                         << ", weight: " << props.weight << ")" << std::endl;
                 }
             }
