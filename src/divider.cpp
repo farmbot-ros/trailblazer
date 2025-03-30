@@ -78,28 +78,8 @@ class Divider {
     }
 
     void divider_timer_callback() {
-        if (!agents_list_received_ || !recieved_field_) {
+        if (!agents_list_received_ || !recieved_field_ || !field_divided_) {
             return;
-        }
-        if (!field_divided_) {
-            std::vector<std::pair<double, double>> field_points;
-            for (const auto &point : border_msg_.lines) {
-                field_points.emplace_back(point.loc_line.front().x, point.loc_line.front().y);
-            }
-            swaths.gen_border(field_points);
-            std::vector<farmtrax::Swath> swath_vec;
-            for (const auto &swath : swaths_msg_.lines) {
-                if (swath.done) {
-                    continue;
-                }
-                swath_vec.push_back(
-                    farmtrax::create_swath(farmtrax::Point(swath.loc_line.front().x, swath.loc_line.front().y),
-                                           farmtrax::Point(swath.loc_line.back().x, swath.loc_line.back().y),
-                                           farmtrax::SwathType::LINE, swath.uuid));
-            }
-            swaths.gen_field(swath_vec, 3, agents_list_.beacons.size());
-
-            field_divided_ = true;
         }
 
         for (auto agent : agents_list_.beacons) {
@@ -115,10 +95,6 @@ class Divider {
         }
     }
 
-    void divide_field() {
-        RCLCPP_INFO(node_->get_logger(), "Dividing field");
-        return;
-    }
     void field_callback(std::shared_ptr<farmbot_interfaces::srv::Field::Request> request,
                         std::shared_ptr<farmbot_interfaces::srv::Field::Response> response) {
 
@@ -129,7 +105,26 @@ class Divider {
         swaths_msg_ = request->swaths;
         response->message = "Success";
         recieved_field_ = true;
-        divide_field();
+
+        RCLCPP_INFO(node_->get_logger(), "Dividing field");
+        std::vector<std::pair<double, double>> field_points;
+        for (const auto &point : border_msg_.lines) {
+            field_points.emplace_back(point.loc_line.front().x, point.loc_line.front().y);
+        }
+        swaths.gen_border(field_points);
+        std::vector<farmtrax::Swath> swath_vec;
+        for (const auto &swath : swaths_msg_.lines) {
+            if (swath.done) {
+                continue;
+            }
+            swath_vec.push_back(
+                farmtrax::create_swath(farmtrax::Point(swath.loc_line.front().x, swath.loc_line.front().y),
+                                       farmtrax::Point(swath.loc_line.back().x, swath.loc_line.back().y),
+                                       farmtrax::SwathType::LINE, swath.uuid));
+        }
+        swaths.gen_field(swath_vec, 3, agents_list_.beacons.size());
+        field_divided_ = true;
+        return;
     }
 };
 
