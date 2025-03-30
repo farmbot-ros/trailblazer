@@ -46,9 +46,7 @@ class GenLines {
     rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
 
   public:
-    farmtrax::Border border_;
-    farmtrax::Field swaths_;
-    farmtrax::Plan plan_;
+    farmtrax::Field field_;
 
     GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
         RCLCPP_INFO(node_->get_logger(), "GENLINES node started");
@@ -104,11 +102,11 @@ class GenLines {
         }
         fill_border_msg(field_points_);
         RCLCPP_INFO(node_->get_logger(), "Field generated: %lu", field_points_.size());
-        border_ = farmtrax::Border(field_points_);
-        swaths_.gen_field(border_, vehicle_coverage_, path_angle_);
-        auto swaths = swaths_.get_swaths();
+        field_.gen_border(field_points_);
+        field_.gen_field(vehicle_coverage_, path_angle_);
+        auto swaths = field_.get_swaths();
         fill_swaths_msg(swaths);
-        RCLCPP_INFO(node_->get_logger(), "Lines generated: %lu", swaths_.get_swaths().size());
+        RCLCPP_INFO(node_->get_logger(), "Lines generated: %lu", field_.get_swaths().size());
         planner_initialized_ = true;
     }
 

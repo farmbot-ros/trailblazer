@@ -86,25 +86,18 @@ class Divider {
             for (const auto &point : border_msg_.lines) {
                 field_points.emplace_back(point.loc_line.front().x, point.loc_line.front().y);
             }
-            // std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> swaths_points;
-            // for (const auto &swath : swaths_msg_.lines) {
-            //     auto p1 = std::make_pair(swath.loc_line.front().x, swath.loc_line.front().y);
-            //     auto p2 = std::make_pair(swath.loc_line.back().x, swath.loc_line.back().y);
-            //     auto pair = std::make_pair(p1, p2);
-            //     swaths_points.push_back(pair);
-            // }
-            // swaths.gen_field(field_points, swaths_points, 3, agents_list_.beacons.size());
-            std::vector<farmtrax::Swath> swathsss;
+            swaths.gen_border(field_points);
+            std::vector<farmtrax::Swath> swath_vec;
             for (const auto &swath : swaths_msg_.lines) {
                 if (swath.done) {
                     continue;
                 }
-                swathsss.push_back(
+                swath_vec.push_back(
                     farmtrax::create_swath(farmtrax::Point(swath.loc_line.front().x, swath.loc_line.front().y),
                                            farmtrax::Point(swath.loc_line.back().x, swath.loc_line.back().y),
                                            farmtrax::SwathType::LINE, swath.uuid));
             }
-            swaths.gen_field(field_points, swathsss, 3, agents_list_.beacons.size());
+            swaths.gen_field(swath_vec, 3, agents_list_.beacons.size());
 
             field_divided_ = true;
         }

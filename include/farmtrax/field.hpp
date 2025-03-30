@@ -69,67 +69,8 @@ namespace farmtrax {
         polygon.outer().assign(new_points.begin(), new_points.end());
     }
 
-    class Border {
-      private:
-        Polygon polygon_;
-
-      public:
-        // Constructors
-        Border() = default;
-
-        // Initialize with a list of (x, y) coordinates
-        Border(const std::vector<std::pair<double, double>> &coordinates) { gen_field(coordinates); }
-
-        Border(const std::vector<std::vector<double>> &coordinates) {
-            std::vector<std::pair<double, double>> points;
-            for (const auto &coord : coordinates) {
-                points.emplace_back(coord[0], coord[1]);
-            }
-            gen_field(points);
-        }
-
-        Border(const Polygon &polygon) {
-            std::vector<std::pair<double, double>> points;
-            for (const auto &point : polygon.outer()) {
-                points.emplace_back(point.x(), point.y());
-            }
-            gen_field(points);
-        }
-        const Polygon &get_polygon() const { return polygon_; }
-
-        // Set the boundary of the field using a list of (x, y) coordinates
-        void gen_field(const std::vector<std::pair<double, double>> &coordinates) {
-            if (coordinates.size() < 3) {
-                throw std::invalid_argument("A polygon must have at least 3 points.");
-            }
-            polygon_.outer().clear();
-            for (const auto &coord : coordinates) {
-                polygon_.outer().emplace_back(coord.first, coord.second);
-            }
-            // Ensure the polygon is closed
-            if (!bg::equals(polygon_.outer().front(), polygon_.outer().back())) {
-                polygon_.outer().emplace_back(polygon_.outer().front());
-            }
-            // Correct the polygon's orientation and closure
-            bg::correct(polygon_);
-            // After setting the boundary, insert the polygon's edges into the R-tree
-            const auto &outer_ring = polygon_.outer();
-            for (std::size_t i = 0; i < outer_ring.size() - 1; ++i) {
-                LineString edge;
-                bg::append(edge, outer_ring[i]);
-                bg::append(edge, outer_ring[i + 1]);
-                // Compute the envelope of the edge
-                Box box;
-                bg::envelope(edge, box);
-            }
-            // Compute the width and height of the field
-            Box bbox;
-            bg::envelope(polygon_, bbox);
-        }
-    };
-
     // Struct to represent a headland
-    struct Headland {
+    struct Ring {
         Polygon headland;
         std::string uuid;
     };
@@ -161,39 +102,59 @@ namespace farmtrax {
 
     class Field {
       private:
+        Polygon border_;
         std::vector<Swath> swaths_; // Holds Swath structs
-        std::vector<Headland> headlands_;
+        std::vector<Ring> headlands_;
 
       public:
         Field() = default;
 
-        void gen_field(const Border &border, double swath_width, double angle_degrees, int number = 0) {
-            // generate_swaths(field, swath_width, angle_degrees);
-            Polygon fieldPolygon = border.get_polygon();
+        void gen_border(const std::vector<std::vector<double>> &coordinates) {
+            std::vector<std::pair<double, double>> points;
+            for (const auto &coord : coordinates) {
+                points.emplace_back(coord[0], coord[1]);
+            }
+            gen_border(points);
+        }
+        // Set the boundary of the field using a list of (x, y) coordinates
+        void gen_border(const std::vector<std::pair<double, double>> &coordinates) {
+            if (coordinates.size() < 3) {
+                throw std::invalid_argument("A polygon must have at least 3 points.");
+            }
+            border_.outer().clear();
+            for (const auto &coord : coordinates) {
+                border_.outer().emplace_back(coord.first, coord.second);
+            }
+            // Ensure the polygon is closed
+            if (!bg::equals(border_.outer().front(), border_.outer().back())) {
+                border_.outer().emplace_back(border_.outer().front());
+            }
+            // Correct the polygon's orientation and closure
+            bg::correct(border_);
+            // After setting the boundary, insert the polygon's edges into the R-tree
+            const auto &outer_ring = border_.outer();
+            for (std::size_t i = 0; i < outer_ring.size() - 1; ++i) {
+                LineString edge;
+                bg::append(edge, outer_ring[i]);
+                bg::append(edge, outer_ring[i + 1]);
+                // Compute the envelope of the edge
+                Box box;
+                bg::envelope(edge, box);
+            }
+            // Compute the width and height of the field
+            Box bbox;
+            bg::envelope(border_, bbox);
+        }
+
+        void gen_field(double swath_width, double angle_degrees, int number = 0) {
             if (number != 0) {
-                headlands_ = generate_headlands(swath_width, border.get_polygon(), number);
+                headlands_ = generate_headlands(swath_width, border_, number);
             }
-            swaths_ = generate_swaths(fieldPolygon, swath_width, angle_degrees);
-            // gen_headlands(swath_width, field.get_polygon(), number);
+            swaths_ = generate_swaths(border_, swath_width, angle_degrees);
         }
 
-        void gen_field(const Border &border,
-                       const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &swaths,
-                       double swath_width, int number) {
-
-            headlands_ = generate_headlands(swath_width, border.get_polygon(), number);
-            auto last_headland = headlands_.back();
-
-            Polygon field_pts_;
-            for (const auto &point : last_headland.headland.outer()) {
-                field_pts_.outer().emplace_back(point.x(), point.y());
-            }
-            swaths_ = gen_swaths(swaths, field_pts_);
-        }
-
-        void gen_field(const Border &border, const std::vector<Swath> &swaths, double swath_width, int number) {
-
-            headlands_ = generate_headlands(swath_width, border.get_polygon(), number);
+        void gen_field(const std::vector<Swath> &swaths, double swath_width, int number) {
+            headlands_ = generate_headlands(swath_width, border_, number);
             auto last_headland = headlands_.back();
 
             Polygon field_pts_;
@@ -206,14 +167,15 @@ namespace farmtrax {
         // Get the swaths as a vector of Swath structs
         const std::vector<Swath> &get_swaths() const { return swaths_; }
 
+      private:
         // gange the swath order from last to first
         void reverse_swaths() { std::reverse(swaths_.begin(), swaths_.end()); }
 
-        std::vector<Headland> generate_headlands(double x, Polygon polygon_, int number = 1) const {
+        std::vector<Ring> generate_headlands(double x, Polygon polygon_, int number = 1) const {
             if (x < 0) {
                 throw std::invalid_argument("Shrink distance must be non-negative.");
             }
-            std::vector<Headland> headland_array;
+            std::vector<Ring> headland_array;
             for (int i = 0; i < number; i++) {
                 auto polygon = i == 0 ? polygon_ : headland_array.back().headland;
                 // Define buffer strategies with straight edges
@@ -277,37 +239,6 @@ namespace farmtrax {
                 }
             }
             return swaths_;
-        }
-
-        std::vector<Swath>
-        gen_swaths(const std::vector<std::pair<std::pair<double, double>, std::pair<double, double>>> &pair_array,
-                   Polygon field) {
-            std::vector<Swath> swaths;
-            for (const auto &swath : pair_array) {
-                LineString line = generate_swathine(Point(swath.first.first, swath.first.second),
-                                                    Point(swath.second.first, swath.second.second));
-
-                std::vector<LineString> clipped;
-                boost::geometry::intersection(line, field, clipped);
-
-                for (const auto &segment : clipped) {
-                    auto swath_width = boost::geometry::length(segment);
-                    if (boost::geometry::length(segment) < swath_width) {
-                        continue; // Ignore very short swaths
-                    }
-                    Swath swath;
-                    swath.line = segment;
-                    swath.uuid = boost::uuids::to_string(boost::uuids::random_generator()());
-                    swath.type = SwathType::LINE;
-                    swath.length = boost::geometry::length(segment);
-
-                    swaths.push_back(swath);
-
-                    insert_point_at_closest_location(field, segment.front());
-                    insert_point_at_closest_location(field, segment.back());
-                }
-            }
-            return swaths;
         }
 
         // Helper function to generate swaths with a specified angle
