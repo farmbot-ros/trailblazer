@@ -83,9 +83,9 @@ class Divider {
         }
         for (auto agent : agents_list_.beacons) {
             std::string agent_name = agent.name;
-            // RCLCPP_INFO(node_->get_logger(), "Publishing to %s", agent_name.c_str());
-            // swaths_pub_map_.at(agent_name)->publish(swaths_map_[agent_name]);
-            // headland_pub_map_.at(agent_name)->publish(headlands_map_[agent_name]);
+            RCLCPP_INFO(node_->get_logger(), "Publishing to %s", agent_name.c_str());
+            swaths_pub_map_.at(agent_name)->publish(swaths_map_[agent_name]);
+            headland_pub_map_.at(agent_name)->publish(headlands_map_[agent_name]);
         }
     }
 
@@ -133,22 +133,22 @@ class Divider {
                 headland_line.loc_line.push_back(loc_p);
                 headlands_map_[agent_name].lines.push_back(headland_line);
             }
-            // for (uint j = 0; j < field.get_swaths().size() - 6; j += 6 * i) {
-            //     farmbot_interfaces::msg::Line swath_msg;
-            //     geometry_msgs::msg::Point loc_p1;
-            //     loc_p1.x = field.get_swaths()[j].line.front().x();
-            //     loc_p1.y = field.get_swaths()[j].line.front().y();
-            //     swath_msg.loc_line.push_back(loc_p1);
-            //
-            //     geometry_msgs::msg::Point loc_p2;
-            //     loc_p2.x = field.get_swaths()[j].line.back().x();
-            //     loc_p2.y = field.get_swaths()[j].line.back().y();
-            //     swath_msg.loc_line.push_back(loc_p2);
-            //
-            //     swath_msg.uuid = field.get_swaths()[j].uuid;
-            //     swath_msg.length = field.get_swaths()[j].length;
-            //     swaths_map_[agent_name].lines.push_back(swath_msg);
-            // }
+            for (uint j = 0; j < field.get_swaths().size() - 6; j += 6 * i) {
+                farmbot_interfaces::msg::Line swath_msg;
+                geometry_msgs::msg::Point loc_p1;
+                loc_p1.x = field.get_swaths()[j].line.front().x();
+                loc_p1.y = field.get_swaths()[j].line.front().y();
+                swath_msg.loc_line.push_back(loc_p1);
+
+                geometry_msgs::msg::Point loc_p2;
+                loc_p2.x = field.get_swaths()[j].line.back().x();
+                loc_p2.y = field.get_swaths()[j].line.back().y();
+                swath_msg.loc_line.push_back(loc_p2);
+
+                swath_msg.uuid = field.get_swaths()[j].uuid;
+                swath_msg.length = field.get_swaths()[j].length;
+                swaths_map_[agent_name].lines.push_back(swath_msg);
+            }
         }
         field_divided_ = true;
     }

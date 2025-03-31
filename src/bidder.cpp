@@ -17,7 +17,7 @@ class Bidder {
   private:
     rclcpp::Node::SharedPtr node_;
     std::string namespace_;
-    bool recieved_beacon_;
+    bool recieved_beacon_, got_job_;
     farmbot_interfaces::msg::Agent my_beacon_;
     int rand_nr;
 
@@ -81,9 +81,10 @@ class Bidder {
     }
 
     void job_assignment(const farmbot_interfaces::msg::Job::SharedPtr msg) {
-        if (msg->agent.uuid != my_beacon_.uuid) {
+        if (msg->agent.uuid != my_beacon_.uuid || got_job_) {
             return;
         }
+        got_job_ = true;
         job_sub_.reset();
         RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", msg->job_id.c_str(), msg->agent.name.c_str());
 
