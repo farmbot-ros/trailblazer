@@ -76,9 +76,7 @@ class GenLines {
 
         RCLCPP_INFO(node_->get_logger(), "Generating field with %f vehicle coverage and %f path angle",
                     vehicle_coverage_, path_angle_);
-
         gen_field();
-
         response->message = "Success";
         response->border = border_msg_;
         response->swaths = swaths_msg_;

@@ -160,6 +160,8 @@ namespace farmtrax {
 
         // Get the swaths as a vector of Swath structs
         const std::vector<Swath> &get_swaths() const { return swaths_; }
+        const std::vector<Ring> &get_headlands() const { return headlands_; }
+        const Polygon &get_border() const { return border_; }
 
         // rearrange the swath order from last to first
         void reverse_swaths() { std::reverse(swaths_.begin(), swaths_.end()); }
