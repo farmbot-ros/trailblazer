@@ -85,7 +85,6 @@ class Bidder {
             return;
         }
         got_job_ = true;
-        job_sub_.reset();
         RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", msg->job_id.c_str(), msg->agent.name.c_str());
 
         // ------------------- Field generation -------------------
@@ -136,6 +135,9 @@ class Bidder {
         }
         auto f_result = f_future.get();
         RCLCPP_INFO(node_->get_logger(), "Successfully recieved Field service response.");
+
+        // ------------------- Reset job subscription -------------------
+        job_sub_.reset();
     }
 };
 

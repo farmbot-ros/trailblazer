@@ -14,7 +14,8 @@ using namespace std::chrono_literals;
 class Divider {
   private:
     rclcpp::Node::SharedPtr node_;
-    bool recieved_field_, agents_list_received_, field_divided_;
+    std::string namespace_;
+    bool recieved_field_, agents_list_received_, field_divided_, recieved_self_headland_, recieved_self_swath_;
 
     farmbot_interfaces::msg::Agents agents_list_;
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
@@ -34,9 +35,18 @@ class Divider {
     rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_pub_, swaths_pub_;
     rclcpp::TimerBase::SharedPtr field_timer_, divider_timer_;
 
+    rclcpp::Subscription<farmbot_interfaces::msg::Lines>::SharedPtr self_headland_sub_, self_swath_sub_;
+    farmbot_interfaces::msg::Lines self_headland_msg_, self_swath_msg_;
+    rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr self_headland_pub_, self_swath_pub_;
+    rclcpp::TimerBase::SharedPtr self_timer_;
+
   public:
     Divider(rclcpp::Node::SharedPtr node) : node_(node) {
         RCLCPP_INFO(node_->get_logger(), "Divider node started");
+        namespace_ = node->get_namespace();
+        if (!namespace_.empty() && namespace_[0] == '/') {
+            namespace_ = namespace_.substr(1);
+        }
 
         field_service_ = node_->create_service<farmbot_interfaces::srv::Field>(
             "pln/field", std::bind(&Divider::field_callback, this, _1, _2), qos, group_one_);
@@ -49,6 +59,16 @@ class Divider {
         swaths_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
 
         divider_timer_ = node_->create_wall_timer(1s, std::bind(&Divider::divider_timer_callback, this));
+
+        self_headland_sub_ = node_->create_subscription<farmbot_interfaces::msg::Lines>(
+            "pln/headland", 10, std::bind(&Divider::self_headland_callback, this, _1));
+        self_swath_sub_ = node_->create_subscription<farmbot_interfaces::msg::Lines>(
+            "pln/swaths", 10, std::bind(&Divider::self_swath_callback, this, _1));
+
+        self_headland_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("pln/headland", 10);
+        self_swath_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("pln/swaths", 10);
+
+        self_timer_ = node_->create_wall_timer(1s, std::bind(&Divider::self_timer_callback, this));
     }
 
   private:
@@ -79,11 +99,11 @@ class Divider {
         if (!agents_list_received_ || !recieved_field_) return;
         if (!field_divided_) {
             divide_field();
-            return;
+            field_divided_ = true;
         }
         for (auto agent : agents_list_.beacons) {
             std::string agent_name = agent.name;
-            RCLCPP_INFO(node_->get_logger(), "Publishing to %s", agent_name.c_str());
+            RCLCPP_INFO_ONCE(node_->get_logger(), "Publishing to %s", agent_name.c_str());
             swaths_pub_map_.at(agent_name)->publish(swaths_map_[agent_name]);
             headland_pub_map_.at(agent_name)->publish(headlands_map_[agent_name]);
         }
@@ -103,7 +123,6 @@ class Divider {
     }
 
     void divide_field() {
-        RCLCPP_INFO(node_->get_logger(), "---------------- Dividing field ----------------");
         std::vector<std::pair<double, double>> field_points;
         for (const auto &point : border_msg_.lines) {
             field_points.emplace_back(std::make_pair(point.loc_line.front().x, point.loc_line.front().y));
@@ -125,6 +144,7 @@ class Divider {
         RCLCPP_INFO(node_->get_logger(), "swath size: %lu", field.get_swaths().size());
         for (uint i = 0; i < agents_list_.beacons.size(); i++) {
             std::string agent_name = agents_list_.beacons[i].name;
+            RCLCPP_INFO(node_->get_logger(), "Agent name: %s", agent_name.c_str());
             for (uint j = 0; j < field.get_headlands()[i].polygon.outer().size(); j++) {
                 farmbot_interfaces::msg::Line headland_line;
                 geometry_msgs::msg::Point loc_p;
@@ -133,7 +153,7 @@ class Divider {
                 headland_line.loc_line.push_back(loc_p);
                 headlands_map_[agent_name].lines.push_back(headland_line);
             }
-            for (uint j = 0; j < field.get_swaths().size() - 6; j += 6 * i) {
+            for (uint j = i; j < field.get_swaths().size() - 6; j += 6) {
                 farmbot_interfaces::msg::Line swath_msg;
                 geometry_msgs::msg::Point loc_p1;
                 loc_p1.x = field.get_swaths()[j].line.front().x();
@@ -150,7 +170,34 @@ class Divider {
                 swaths_map_[agent_name].lines.push_back(swath_msg);
             }
         }
-        field_divided_ = true;
+        RCLCPP_INFO(node_->get_logger(), "---------------- Field divided ----------------");
+    }
+
+    void self_headland_callback(std::shared_ptr<farmbot_interfaces::msg::Lines> msg) {
+        if (recieved_self_headland_) {
+            return;
+        }
+        self_headland_msg_ = *msg;
+        recieved_self_headland_ = true;
+        self_headland_sub_.reset();
+    }
+
+    void self_swath_callback(std::shared_ptr<farmbot_interfaces::msg::Lines> msg) {
+        if (recieved_self_swath_) {
+            return;
+        }
+        self_swath_msg_ = *msg;
+        recieved_self_swath_ = true;
+        self_swath_sub_.reset();
+    }
+
+    void self_timer_callback() {
+        if (!recieved_self_headland_ || !recieved_self_swath_) {
+            return;
+        }
+        RCLCPP_INFO_ONCE(node_->get_logger(), "----------------- Headland and swath received ----------------");
+        self_headland_pub_->publish(self_headland_msg_);
+        self_swath_pub_->publish(self_swath_msg_);
     }
 };
 
