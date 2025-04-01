@@ -73,7 +73,12 @@ class Divider {
 
   private:
     void agents_callback(std::shared_ptr<farmbot_interfaces::msg::Agents> msg) {
-        agents_list_ = *msg;
+        for (auto agent : msg->beacons) {
+            if (agent.function != "harvester") {
+                continue;
+            }
+            agents_list_.beacons.push_back(agent);
+        }
         for (auto agent : agents_list_.beacons) {
             rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr swaths_pub =
                 node_->create_publisher<farmbot_interfaces::msg::Lines>("/" + agent.name + "/pln/swaths", 10);
@@ -138,7 +143,8 @@ class Divider {
                                        farmtrax::Point(swath.loc_line.back().x, swath.loc_line.back().y),
                                        farmtrax::SwathType::LINE, swath.uuid));
         }
-        field.gen_field(swath_vec, 3, agents_list_.beacons.size());
+        uint num_agents = agents_list_.beacons.size();
+        field.gen_field(swath_vec, 3, num_agents);
 
         RCLCPP_INFO(node_->get_logger(), "headland size: %lu", field.get_headlands().size());
         RCLCPP_INFO(node_->get_logger(), "swath size: %lu", field.get_swaths().size());
@@ -153,7 +159,7 @@ class Divider {
                 headland_line.loc_line.push_back(loc_p);
                 headlands_map_[agent_name].lines.push_back(headland_line);
             }
-            for (uint j = i; j < field.get_swaths().size() - 6; j += 6) {
+            for (uint j = i; j < field.get_swaths().size(); j += num_agents) {
                 farmbot_interfaces::msg::Line swath_msg;
                 geometry_msgs::msg::Point loc_p1;
                 loc_p1.x = field.get_swaths()[j].line.front().x();
