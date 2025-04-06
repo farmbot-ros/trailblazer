@@ -73,13 +73,15 @@ class Divider {
 
   private:
     void agents_callback(std::shared_ptr<farmbot_interfaces::msg::Agents> msg) {
-        for (auto agent : msg->beacons) {
-            if (agent.function != "harvester") {
-                continue;
+        for (auto agent : msg->agents) {
+            for (auto function : agent.participants[0].functions) {
+                if (function != "harvester") {
+                    continue;
+                }
             }
-            agents_list_.beacons.push_back(agent);
+            agents_list_.agents.push_back(agent);
         }
-        for (auto agent : agents_list_.beacons) {
+        for (auto agent : agents_list_.agents) {
             rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr swaths_pub =
                 node_->create_publisher<farmbot_interfaces::msg::Lines>("/" + agent.name + "/pln/swaths", 10);
             rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr headland_pub =
@@ -88,7 +90,7 @@ class Divider {
             headland_pub_map_[agent.name] = headland_pub;
         }
         agents_list_received_ = true;
-        RCLCPP_INFO(node_->get_logger(), "Agents list received: %lu", agents_list_.beacons.size());
+        RCLCPP_INFO(node_->get_logger(), "Agents list received: %lu", agents_list_.agents.size());
         agents_sub_.reset();
     }
 
@@ -106,7 +108,7 @@ class Divider {
             divide_field();
             field_divided_ = true;
         }
-        for (auto agent : agents_list_.beacons) {
+        for (auto agent : agents_list_.agents) {
             std::string agent_name = agent.name;
             RCLCPP_INFO_ONCE(node_->get_logger(), "Publishing to %s", agent_name.c_str());
             swaths_pub_map_.at(agent_name)->publish(swaths_map_[agent_name]);
@@ -143,13 +145,13 @@ class Divider {
                                        farmtrax::Point(swath.loc_line.back().x, swath.loc_line.back().y),
                                        farmtrax::SwathType::LINE, swath.uuid));
         }
-        uint num_agents = agents_list_.beacons.size();
+        uint num_agents = agents_list_.agents.size();
         field.gen_field(swath_vec, 3, num_agents);
 
         RCLCPP_INFO(node_->get_logger(), "headland size: %lu", field.get_headlands().size());
         RCLCPP_INFO(node_->get_logger(), "swath size: %lu", field.get_swaths().size());
-        for (uint i = 0; i < agents_list_.beacons.size(); i++) {
-            std::string agent_name = agents_list_.beacons[i].name;
+        for (uint i = 0; i < agents_list_.agents.size(); i++) {
+            std::string agent_name = agents_list_.agents[i].name;
             RCLCPP_INFO(node_->get_logger(), "Agent name: %s", agent_name.c_str());
             for (uint j = 0; j < field.get_headlands()[i].polygon.outer().size(); j++) {
                 farmbot_interfaces::msg::Line headland_line;
