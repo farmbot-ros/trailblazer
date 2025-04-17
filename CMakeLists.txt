@@ -18,6 +18,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(concord)
 
+FetchContent_Declare(
+  geoson
+  GIT_REPOSITORY https://github.com/bresilla/geoson.git
+  GIT_TAG        main
+)
+FetchContent_MakeAvailable(geoson)
+
+
 install(
     DIRECTORY config
     DESTINATION share/${PROJECT_NAME}
@@ -99,6 +107,7 @@ set(dependencies_sys
     ${Eigen_LIBRARIES}
     nlohmann_json::nlohmann_json
     concord
+    geoson
 )
 
 foreach(executable ${executables})

@@ -16,13 +16,14 @@
 #include "farmbot_interfaces/srv/field_gen.hpp"
 #include "farmbot_interfaces/srv/field_op.hpp"
 
-#include "farmbot_trailblazer/utils/geojson.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 
 #include "farmbot_interfaces/msg/agent.h"
 
+#include "farmbot_trailblazer/utils/geojson.hpp"
 #include <concord/wgs_to_enu.hpp>
+#include <geoson/geoson.hpp>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -124,8 +125,8 @@ class GenLines {
   private:
     void points_jsonfile(const std::string &geojson_file) {
         try {
-            auto geojsonObject = geojson::parseGeoJSONFromFile(geojson_file);
-            geojson_points_ = geojson::utils::extractFirstPolygon(geojsonObject);
+            auto geojsonObject = geoson::parseGeoJSONFromFile(geojson_file);
+            geojson_points_ = trailblazer::utils::extractFirstPolygon(geojsonObject);
         } catch (const std::exception &e) {
             RCLCPP_ERROR(node_->get_logger(), "Error parsing GeoJSON: %s", e.what());
         }
