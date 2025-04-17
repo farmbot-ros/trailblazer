@@ -4,28 +4,43 @@
 #include "farmbot_interfaces/msg/job.hpp"
 #include "farmbot_interfaces/srv/field_gen.hpp"
 #include "farmbot_interfaces/srv/field_op.hpp"
+#include "farmbot_interfaces/srv/job.hpp"
 #include <cstdlib> // for rand() and srand()
 #include <ctime>   // for time()
 #include <rclcpp/client.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/serialization.hpp>
+#include <rclcpp/serialized_message.hpp>
 #include <std_msgs/msg/bool.hpp>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
+template <typename T> std::vector<uint8_t> serialize(const T &msg) {
+    rclcpp::Serialization<T> serializer;
+    rclcpp::SerializedMessage serialized;
+    serializer.serialize_message(&msg, &serialized);
+    auto rmw_msg = serialized.get_rcl_serialized_message();
+    size_t len = rmw_msg.buffer_length;
+    auto buf = reinterpret_cast<const uint8_t *>(rmw_msg.buffer);
+    std::vector<uint8_t> blob(buf, buf + len);
+    return blob;
+}
+
 class Bidder {
   private:
     rclcpp::Node::SharedPtr node_;
     std::string namespace_;
-    bool recieved_beacon_, got_job_;
+    bool recieved_beacon_;
     farmbot_interfaces::msg::Agent my_beacon_;
     int rand_nr;
 
     rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr beacon_sub_;
     rclcpp::Subscription<farmbot_interfaces::msg::Auction>::SharedPtr auction_sub_;
     rclcpp::Publisher<farmbot_interfaces::msg::Bid>::SharedPtr bid_pub_;
-    rclcpp::Subscription<farmbot_interfaces::msg::Job>::SharedPtr job_sub_;
-    rclcpp::SubscriptionOptions job_sub_opts_;
+    rclcpp::CallbackGroup::SharedPtr callback_group_;
+
+    rclcpp::Service<farmbot_interfaces::srv::Job>::SharedPtr job_service_;
 
     rclcpp::Client<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_client_;
     rclcpp::Client<farmbot_interfaces::srv::FieldOp>::SharedPtr field_client_;
@@ -41,18 +56,19 @@ class Bidder {
         std::srand(std::time(0) + getpid());
         rand_nr = rand() % 100;
 
-        job_sub_opts_.callback_group = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+        callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
 
         auction_sub_ = node->create_subscription<farmbot_interfaces::msg::Auction>(
             "/job/auction", 10, std::bind(&Bidder::auction_bid, this, _1));
         bid_pub_ = node->create_publisher<farmbot_interfaces::msg::Bid>("/job/bid", 10);
         beacon_sub_ = node->create_subscription<farmbot_interfaces::msg::Agent>(
             "beacon/rci", 10, std::bind(&Bidder::beacon_callback, this, _1));
-        job_sub_ = node->create_subscription<farmbot_interfaces::msg::Job>(
-            "/job/job", 10, std::bind(&Bidder::job_assignment, this, _1), job_sub_opts_);
 
         field_gen_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field_gen");
         field_client_ = node->create_client<farmbot_interfaces::srv::FieldOp>("pln/field");
+
+        job_service_ = node->create_service<farmbot_interfaces::srv::Job>(
+            "job/field_gen", std::bind(&Bidder::job_callback, this, _1, _2), 10, callback_group_);
     }
 
   private:
@@ -80,17 +96,13 @@ class Bidder {
         bid_pub_->publish(bid);
     }
 
-    void job_assignment(const farmbot_interfaces::msg::Job::SharedPtr msg) {
-        // check if job is assigned to this bidder
-        if (msg->agent.uuid != my_beacon_.uuid || got_job_) {
-            return;
-        }
-        got_job_ = true;
-        RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", msg->job_id.c_str(), msg->agent.name.c_str());
-
-        // ------------------- Field generation -------------------
+    void job_callback(std::shared_ptr<farmbot_interfaces::srv::Job::Request> request,
+                      std::shared_ptr<farmbot_interfaces::srv::Job::Response> response) {
+        RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", request->the_job.job_id.c_str(),
+                    request->the_job.agent.name.c_str());
+        //
         auto field_gen_request = std::make_shared<farmbot_interfaces::srv::FieldGen::Request>();
-        for (const auto &kv : msg->parameters) {
+        for (const auto &kv : request->the_job.parameters) {
             if (kv.key == "geojson_file") {
                 field_gen_request->geojson_file = kv.value;
                 RCLCPP_INFO(node_->get_logger(), "Field request %s", field_gen_request->geojson_file.c_str());
@@ -120,28 +132,10 @@ class Bidder {
 
         RCLCPP_INFO(node_->get_logger(), "Border received: %lu", fg_result->field.border.lines.size());
         RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", fg_result->field.swaths.lines.size());
-
-        // ------------------- Field Assignement -------------------
-        auto field_request = std::make_shared<farmbot_interfaces::srv::FieldOp::Request>();
-        field_request->agents = msg->agents;
-        field_request->field.border = fg_result->field.border;
-        field_request->field.swaths = fg_result->field.swaths;
-        while (!field_client_->wait_for_service(1s)) {
-            if (!rclcpp::ok()) {
-                RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                return;
-            }
-            RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
-        }
-        auto f_future = field_client_->async_send_request(field_request);
-        while (rclcpp::ok() && f_future.wait_for(1s) == std::future_status::timeout) {
-            RCLCPP_INFO(node_->get_logger(), "Waiting for response from Field service...");
-        }
-        auto f_result = f_future.get();
-        RCLCPP_INFO(node_->get_logger(), "Successfully recieved Field service response.");
-
-        // ------------------- Reset job subscription -------------------
-        job_sub_.reset();
+        // ------------------- Response -------------------
+        response->message = "Success";
+        response->type = "farmbot_interfaces/msg/Field";
+        response->data = serialize(fg_result->field);
     }
 };
 
