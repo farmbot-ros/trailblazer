@@ -13,10 +13,8 @@
 
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
-#include "farmbot_interfaces/srv/enu2_gps.hpp"
-#include "farmbot_interfaces/srv/field.hpp"
 #include "farmbot_interfaces/srv/field_gen.hpp"
-#include "farmbot_interfaces/srv/gps2_enu.hpp"
+#include "farmbot_interfaces/srv/field_op.hpp"
 
 #include "farmbot_trailblazer/utils/geojson.hpp"
 #include "geometry_msgs/msg/point.hpp"
@@ -47,7 +45,7 @@ class GenLines {
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
 
     rclcpp::Service<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_service_;
-    rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
+    rclcpp::Client<farmbot_interfaces::srv::FieldOp>::SharedPtr field_client_;
 
     rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr agent_sub_;
 
@@ -63,7 +61,7 @@ class GenLines {
         field_gen_service_ = node_->create_service<farmbot_interfaces::srv::FieldGen>(
             "pln/field_gen", std::bind(&GenLines::field_callback, this, _1, _2), qos_, group_one_);
 
-        field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("pln/field_msgs");
+        field_client_ = node_->create_client<farmbot_interfaces::srv::FieldOp>("pln/field_msgs");
 
         agent_sub_ = node_->create_subscription<farmbot_interfaces::msg::Agent>(
             "beacon/rci", 10, std::bind(&GenLines::agent_callback, this, _1));

@@ -2,8 +2,8 @@
 #include "farmbot_interfaces/msg/auction.hpp"
 #include "farmbot_interfaces/msg/bid.hpp"
 #include "farmbot_interfaces/msg/job.hpp"
-#include "farmbot_interfaces/srv/field.hpp"
 #include "farmbot_interfaces/srv/field_gen.hpp"
+#include "farmbot_interfaces/srv/field_op.hpp"
 #include <cstdlib> // for rand() and srand()
 #include <ctime>   // for time()
 #include <rclcpp/client.hpp>
@@ -28,7 +28,7 @@ class Bidder {
     rclcpp::SubscriptionOptions job_sub_opts_;
 
     rclcpp::Client<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_client_;
-    rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
+    rclcpp::Client<farmbot_interfaces::srv::FieldOp>::SharedPtr field_client_;
 
   public:
     ~Bidder() {}
@@ -52,7 +52,7 @@ class Bidder {
             "/job/job", 10, std::bind(&Bidder::job_assignment, this, _1), job_sub_opts_);
 
         field_gen_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field_gen");
-        field_client_ = node->create_client<farmbot_interfaces::srv::Field>("pln/field");
+        field_client_ = node->create_client<farmbot_interfaces::srv::FieldOp>("pln/field");
     }
 
   private:
@@ -122,7 +122,7 @@ class Bidder {
         RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", fg_result->field.swaths.lines.size());
 
         // ------------------- Field Assignement -------------------
-        auto field_request = std::make_shared<farmbot_interfaces::srv::Field::Request>();
+        auto field_request = std::make_shared<farmbot_interfaces::srv::FieldOp::Request>();
         field_request->agents = msg->agents;
         field_request->field.border = fg_result->field.border;
         field_request->field.swaths = fg_result->field.swaths;
