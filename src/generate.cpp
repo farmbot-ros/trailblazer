@@ -22,6 +22,10 @@
 #include "geometry_msgs/msg/point.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 
+#include "farmbot_interfaces/msg/agent.h"
+
+#include <concord/wgs_to_enu.hpp>
+
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
@@ -30,20 +34,22 @@ class GenLines {
     rclcpp::Node::SharedPtr node_;
     double vehicle_coverage_ = 3.0;
     double path_angle_ = 90;
-    bool planner_initialized_;
+    bool planner_initialized_, got_agent_;
     std::string geojson_file_;
     std::vector<std::vector<double>> field_points_;
     std::vector<std::vector<double>> geojson_points_;
+
+    farmbot_interfaces::msg::Agent agent_;
 
     rclcpp::QoS qos_ = rclcpp::QoS(rclcpp::KeepLast(1));
 
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
 
-    rclcpp::Client<farmbot_interfaces::srv::Gps2Enu>::SharedPtr gps2enu_client_;
-    rclcpp::Client<farmbot_interfaces::srv::Enu2Gps>::SharedPtr enu2gps_client_;
     rclcpp::Service<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_service_;
     rclcpp::Client<farmbot_interfaces::srv::Field>::SharedPtr field_client_;
+
+    rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr agent_sub_;
 
   public:
     farmtrax::Field field_;
@@ -53,20 +59,29 @@ class GenLines {
         // Callback groups
         group_two_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         group_one_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-        // Create the service clients
-        gps2enu_client_ = node_->create_client<farmbot_interfaces::srv::Gps2Enu>("loc/gps2enu");
-        enu2gps_client_ = node_->create_client<farmbot_interfaces::srv::Enu2Gps>("loc/enu2gps");
         // Create the service
         field_gen_service_ = node_->create_service<farmbot_interfaces::srv::FieldGen>(
             "pln/field_gen", std::bind(&GenLines::field_callback, this, _1, _2), qos_, group_one_);
 
         field_client_ = node_->create_client<farmbot_interfaces::srv::Field>("pln/field_msgs");
+
+        agent_sub_ = node_->create_subscription<farmbot_interfaces::msg::Agent>(
+            "beacon/rci", 10, std::bind(&GenLines::agent_callback, this, _1));
+    }
+
+    void agent_callback(std::shared_ptr<farmbot_interfaces::msg::Agent> msg) {
+        agent_ = *msg;
+        got_agent_ = true;
     }
 
     void field_callback(std::shared_ptr<farmbot_interfaces::srv::FieldGen::Request> request,
                         std::shared_ptr<farmbot_interfaces::srv::FieldGen::Response> response) {
         if (request->geojson_file.empty()) {
             RCLCPP_ERROR(node_->get_logger(), "No geojson file specified");
+            return;
+        }
+
+        if (!got_agent_) {
             return;
         }
 
@@ -78,8 +93,8 @@ class GenLines {
                     vehicle_coverage_, path_angle_);
         gen_field();
         response->message = "Success";
-        response->border = border_msg_;
-        response->swaths = swaths_msg_;
+        response->field.border = border_msg_;
+        response->field.swaths = swaths_msg_;
         return;
     }
 
@@ -120,71 +135,28 @@ class GenLines {
 
     std::vector<std::vector<double>> nav_to_enu(const std::vector<std::vector<double>> &navpts) {
         std::vector<std::vector<double>> points_;
-        auto request = std::make_shared<farmbot_interfaces::srv::Gps2Enu::Request>();
         for (const auto &point : navpts) {
-            sensor_msgs::msg::NavSatFix gps_point;
-            gps_point.latitude = point[0];
-            gps_point.longitude = point[1];
-            gps_point.altitude = 0.0; // Adjust if altitude data is available
-            request->gps.push_back(gps_point);
+            auto enu_point = concord::gps_to_enu(point[0], point[1], point[2], agent_.zero_ref.x, agent_.zero_ref.y,
+                                                 agent_.zero_ref.z);
+            points_.push_back(
+                {std::get<0>(enu_point), std::get<1>(enu_point), std::get<2>(enu_point), point[0], point[1], point[2]});
         }
-        while (!gps2enu_client_->wait_for_service(1s)) {
-            if (!rclcpp::ok()) {
-                RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                return points_;
-            }
-            RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
-        }
-        auto result_future = gps2enu_client_->async_send_request(request);
-        while (rclcpp::ok() && result_future.wait_for(1s) == std::future_status::timeout) {
-            RCLCPP_INFO(node_->get_logger(), "Waiting for response from GPS2ENU service...");
-        }
-        RCLCPP_INFO(node_->get_logger(), "Successfully recieved GPS2ENU service response.");
-        auto result = result_future.get();
-        auto getres = result->enu;
-        for (uint i = 0; i < getres.size(); i++) {
-            points_.push_back({getres[i].position.x, getres[i].position.y, getres[i].position.z, navpts[i][0],
-                               navpts[i][1], navpts[i][2]});
-        }
-        RCLCPP_INFO(node_->get_logger(), "Successfully retrieved %zu waypoints.", points_.size());
         return points_;
     }
 
     std::vector<std::vector<double>> enu_to_nav(const std::vector<std::vector<double>> &points) {
         std::vector<std::vector<double>> navpts_;
-        auto request = std::make_shared<farmbot_interfaces::srv::Enu2Gps::Request>();
         for (const auto &point : points) {
-            geometry_msgs::msg::Pose enu_point;
-            enu_point.position.x = point[0];
-            enu_point.position.y = point[1];
-            enu_point.position.z = point[2];
-            request->enu.push_back(enu_point);
+            auto gps_point = concord::enu_to_gps(point[0], point[1], point[2], agent_.zero_ref.x, agent_.zero_ref.y,
+                                                 agent_.zero_ref.z);
+            navpts_.push_back(
+                {std::get<0>(gps_point), std::get<1>(gps_point), std::get<2>(gps_point), point[3], point[4], point[5]});
         }
-        while (!enu2gps_client_->wait_for_service(1s)) {
-            if (!rclcpp::ok()) {
-                RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
-                return navpts_;
-            }
-            RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
-        }
-        auto result_future = enu2gps_client_->async_send_request(request);
-        while (rclcpp::ok() && result_future.wait_for(1s) == std::future_status::timeout) {
-            RCLCPP_INFO(node_->get_logger(), "Waiting for response from ENU2GPS service...");
-        }
-        RCLCPP_INFO(node_->get_logger(), "Successfully recieved ENU2GPS service response.");
-        auto result = result_future.get();
-        auto getres = result->gps;
-        for (uint i = 0; i < getres.size(); i++) {
-            navpts_.push_back({getres[i].latitude, getres[i].longitude, getres[i].altitude, points[i][0], points[i][1],
-                               points[i][2]});
-        }
-        RCLCPP_INFO(node_->get_logger(), "Successfully retrieved %zu waypoints.", navpts_.size());
         return navpts_;
     }
 
     void fill_border_msg(std::vector<std::vector<double>> points) {
         border_msg_.lines.clear();
-        RCLCPP_INFO(node_->get_logger(), "Border received: %lu", points.size());
         for (const auto &point : points) {
             farmbot_interfaces::msg::Line border_msg;
             geometry_msgs::msg::Point loc_p;
@@ -204,7 +176,6 @@ class GenLines {
 
     void fill_swaths_msg(std::vector<farmtrax::Swath> swaths) {
         swaths_msg_.lines.clear();
-        RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", swaths.size());
         std::vector<std::vector<double>> local_temp;
         for (const auto &swath : swaths) {
             local_temp.push_back({swath.line.front().x(), swath.line.front().y(), .0});

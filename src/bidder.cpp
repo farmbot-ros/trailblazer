@@ -81,6 +81,7 @@ class Bidder {
     }
 
     void job_assignment(const farmbot_interfaces::msg::Job::SharedPtr msg) {
+        // check if job is assigned to this bidder
         if (msg->agent.uuid != my_beacon_.uuid || got_job_) {
             return;
         }
@@ -117,11 +118,14 @@ class Bidder {
         auto fg_result = fg_future.get();
         RCLCPP_INFO(node_->get_logger(), "Successfully recieved FieldGen service response.");
 
+        RCLCPP_INFO(node_->get_logger(), "Border received: %lu", fg_result->field.border.lines.size());
+        RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", fg_result->field.swaths.lines.size());
+
         // ------------------- Field Assignement -------------------
         auto field_request = std::make_shared<farmbot_interfaces::srv::Field::Request>();
         field_request->agents = msg->agents;
-        field_request->border = fg_result->border;
-        field_request->swaths = fg_result->swaths;
+        field_request->field.border = fg_result->field.border;
+        field_request->field.swaths = fg_result->field.swaths;
         while (!field_client_->wait_for_service(1s)) {
             if (!rclcpp::ok()) {
                 RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");

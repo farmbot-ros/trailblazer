@@ -11,6 +11,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
 
+FetchContent_Declare(
+  concord
+  GIT_REPOSITORY https://github.com/bresilla/concord.git
+  GIT_TAG        main
+)
+FetchContent_MakeAvailable(concord)
+
 install(
     DIRECTORY config
     DESTINATION share/${PROJECT_NAME}
@@ -91,6 +98,7 @@ set(dependencies_sys
     ${PCL_LIBRARIES}
     ${Eigen_LIBRARIES}
     nlohmann_json::nlohmann_json
+    concord
 )
 
 foreach(executable ${executables})
