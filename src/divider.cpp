@@ -2,7 +2,7 @@
 
 #include "farmbot_interfaces/msg/agents.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
-#include "farmbot_interfaces/srv/field.hpp"
+#include "farmbot_interfaces/srv/field_op.hpp"
 
 #include <unordered_map>
 
@@ -28,7 +28,7 @@ class Divider {
     std::unordered_map<std::string, farmbot_interfaces::msg::Lines> headlands_map_;
 
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
-    rclcpp::Service<farmbot_interfaces::srv::Field>::SharedPtr field_service_;
+    rclcpp::Service<farmbot_interfaces::srv::FieldOp>::SharedPtr field_service_;
     rclcpp::QoS qos = rclcpp::QoS(rclcpp::KeepLast(10));
 
     rclcpp::Subscription<farmbot_interfaces::msg::Agents>::SharedPtr agents_sub_;
@@ -48,8 +48,8 @@ class Divider {
             namespace_ = namespace_.substr(1);
         }
 
-        field_service_ = node_->create_service<farmbot_interfaces::srv::Field>(
-            "pln/field", std::bind(&Divider::field_callback, this, _1, _2), qos, group_one_);
+        field_service_ = node_->create_service<farmbot_interfaces::srv::FieldOp>(
+            "pln/field_op", std::bind(&Divider::field_callback, this, _1, _2), qos, group_one_);
 
         field_timer_ = node_->create_wall_timer(1s, std::bind(&Divider::field_timer_callback, this));
         agents_sub_ = node_->create_subscription<farmbot_interfaces::msg::Agents>(
@@ -116,14 +116,14 @@ class Divider {
         }
     }
 
-    void field_callback(std::shared_ptr<farmbot_interfaces::srv::Field::Request> request,
-                        std::shared_ptr<farmbot_interfaces::srv::Field::Response> response) {
+    void field_callback(std::shared_ptr<farmbot_interfaces::srv::FieldOp::Request> request,
+                        std::shared_ptr<farmbot_interfaces::srv::FieldOp::Response> response) {
 
-        RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", request->swaths.lines.size());
-        RCLCPP_INFO(node_->get_logger(), "Border received: %lu", request->border.lines.size());
+        RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", request->field.swaths.lines.size());
+        RCLCPP_INFO(node_->get_logger(), "Border received: %lu", request->field.border.lines.size());
         RCLCPP_INFO(node_->get_logger(), "Agents received: %lu", request->agents.size());
-        border_msg_ = request->border;
-        swaths_msg_ = request->swaths;
+        border_msg_ = request->field.border;
+        swaths_msg_ = request->field.swaths;
         response->message = "Success";
         recieved_field_ = true;
         return;
@@ -178,7 +178,7 @@ class Divider {
                 swaths_map_[agent_name].lines.push_back(swath_msg);
             }
         }
-        RCLCPP_INFO(node_->get_logger(), "---------------- Field divided ----------------");
+        // RCLCPP_INFO(node_->get_logger(), "---------------- Field divided ----------------");
     }
 
     void self_headland_callback(std::shared_ptr<farmbot_interfaces::msg::Lines> msg) {
@@ -203,7 +203,7 @@ class Divider {
         if (!recieved_self_headland_ || !recieved_self_swath_) {
             return;
         }
-        RCLCPP_INFO_ONCE(node_->get_logger(), "----------------- Headland and swath received ----------------");
+        // RCLCPP_INFO_ONCE(node_->get_logger(), "----------------- Headland and swath received ----------------");
         self_headland_pub_->publish(self_headland_msg_);
         self_swath_pub_->publish(self_swath_msg_);
     }
