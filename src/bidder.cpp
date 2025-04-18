@@ -42,7 +42,7 @@ class Bidder {
     rclcpp::Publisher<farmbot_interfaces::msg::Bid>::SharedPtr bid_pub_;
     rclcpp::CallbackGroup::SharedPtr callback_group_;
 
-    rclcpp::Service<farmbot_interfaces::srv::Job>::SharedPtr job_service_;
+    rclcpp::Service<farmbot_interfaces::srv::Job>::SharedPtr field_gen_job_service_, field_op_job_service_;
 
     rclcpp::Client<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_client_;
     rclcpp::Client<farmbot_interfaces::srv::FieldOp>::SharedPtr field_op_client_;
@@ -66,10 +66,13 @@ class Bidder {
             "/job/auction", 10, std::bind(&Bidder::auction_bid, this, _1));
         bid_pub_ = node->create_publisher<farmbot_interfaces::msg::Bid>("/job/bid", 10);
         field_gen_client_ = node->create_client<farmbot_interfaces::srv::FieldGen>("pln/field_gen");
-        field_op_client_ = node->create_client<farmbot_interfaces::srv::FieldOp>("pln/field");
+        field_op_client_ = node->create_client<farmbot_interfaces::srv::FieldOp>("pln/field_op");
 
-        job_service_ = node->create_service<farmbot_interfaces::srv::Job>(
-            "job/field_gen", std::bind(&Bidder::job_callback, this, _1, _2), 10, callback_group_);
+        field_gen_job_service_ = node->create_service<farmbot_interfaces::srv::Job>(
+            "job/field_gen", std::bind(&Bidder::field_gen_job_callback, this, _1, _2), 10, callback_group_);
+
+        field_op_job_service_ = node->create_service<farmbot_interfaces::srv::Job>(
+            "job/field_op", std::bind(&Bidder::field_op_job_callback, this, _1, _2), 10, callback_group_);
     }
 
   private:
@@ -111,8 +114,8 @@ class Bidder {
         }
     }
 
-    void job_callback(std::shared_ptr<farmbot_interfaces::srv::Job::Request> request,
-                      std::shared_ptr<farmbot_interfaces::srv::Job::Response> response) {
+    void field_gen_job_callback(std::shared_ptr<farmbot_interfaces::srv::Job::Request> request,
+                                std::shared_ptr<farmbot_interfaces::srv::Job::Response> response) {
         RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", request->the_job.job_id.c_str(),
                     request->the_job.agent.name.c_str());
 
@@ -152,9 +155,17 @@ class Bidder {
 
         // ------------------- Response -------------------
         response->message = "Success";
-        response->type = "json/Field";
+        response->type = "json/FieldGen";
         response->data = nlohmann::json::to_cbor(gsn);
         // response->data = serialize(fg_result->field);
+    }
+
+    void field_op_job_callback(std::shared_ptr<farmbot_interfaces::srv::Job::Request> request,
+                               std::shared_ptr<farmbot_interfaces::srv::Job::Response> response) {
+        RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", request->the_job.job_id.c_str(),
+                    request->the_job.agent.name.c_str());
+        response->type = "json/FieldOp";
+        response->message = "Success";
     }
 };
 

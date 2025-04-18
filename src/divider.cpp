@@ -49,7 +49,7 @@ class Divider {
         }
 
         field_service_ = node_->create_service<farmbot_interfaces::srv::FieldOp>(
-            "pln/field", std::bind(&Divider::field_callback, this, _1, _2), qos, group_one_);
+            "pln/field_op", std::bind(&Divider::field_callback, this, _1, _2), qos, group_one_);
 
         field_timer_ = node_->create_wall_timer(1s, std::bind(&Divider::field_timer_callback, this));
         agents_sub_ = node_->create_subscription<farmbot_interfaces::msg::Agents>(
