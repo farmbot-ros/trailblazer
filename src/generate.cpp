@@ -40,6 +40,7 @@ class GenLines {
     farmbot_interfaces::msg::Agent agent_;
 
     rclcpp::QoS qos_ = rclcpp::QoS(rclcpp::KeepLast(1));
+    rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr agent_sub_;
 
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
     rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
@@ -47,7 +48,8 @@ class GenLines {
     rclcpp::Service<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_service_;
     rclcpp::Client<farmbot_interfaces::srv::FieldOp>::SharedPtr field_client_;
 
-    rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr agent_sub_;
+    rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_pub_, swaths_pub_;
+    rclcpp::TimerBase::SharedPtr self_timer_;
 
   public:
     farmtrax::Field field_;
@@ -65,11 +67,23 @@ class GenLines {
 
         agent_sub_ = node_->create_subscription<farmbot_interfaces::msg::Agent>(
             "beacon/rci", 10, std::bind(&GenLines::agent_callback, this, _1));
+
+        border_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
+        swaths_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
+        self_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::self_timer_callback, this));
     }
 
     void agent_callback(std::shared_ptr<farmbot_interfaces::msg::Agent> msg) {
         agent_ = *msg;
         got_agent_ = true;
+    }
+
+    void self_timer_callback() {
+        if (!planner_initialized_) {
+            return;
+        }
+        border_pub_->publish(border_msg_);
+        swaths_pub_->publish(swaths_msg_);
     }
 
     void field_callback(std::shared_ptr<farmbot_interfaces::srv::FieldGen::Request> request,
@@ -148,7 +162,7 @@ class GenLines {
             auto gps_point = concord::enu_to_gps(point[0], point[1], point[2], agent_.zero_ref.x, agent_.zero_ref.y,
                                                  agent_.zero_ref.z);
             navpts_.push_back(
-                {std::get<0>(gps_point), std::get<1>(gps_point), std::get<2>(gps_point), point[3], point[4], point[5]});
+                {std::get<0>(gps_point), std::get<1>(gps_point), std::get<2>(gps_point), point[0], point[1], point[2]});
         }
         return navpts_;
     }
