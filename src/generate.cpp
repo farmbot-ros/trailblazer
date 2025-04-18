@@ -23,7 +23,6 @@
 
 #include "farmbot_trailblazer/utils/geojson.hpp"
 #include <concord/wgs_to_enu.hpp>
-#include <geoson/libgeojson.hpp>
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
@@ -125,7 +124,7 @@ class GenLines {
   private:
     void points_jsonfile(const std::string &geojson_file) {
         try {
-            auto geojsonObject = geoson::op::ReadFeatureCollection(geojson_file);
+            auto geojsonObject = trailblazer::utils::ReadFeatureCollection(geojson_file);
             geojson_points_ = trailblazer::utils::extractFirstPolygon(geojsonObject);
         } catch (const std::exception &e) {
             RCLCPP_ERROR(node_->get_logger(), "Error parsing GeoJSON: %s", e.what());

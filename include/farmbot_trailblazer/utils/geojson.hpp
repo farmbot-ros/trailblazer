@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 
-#include <geoson/libgeojson.hpp>
 #include <nlohmann/json.hpp>
 
 #include "farmbot_interfaces/msg/field.hpp"
@@ -46,6 +45,30 @@ namespace trailblazer::utils {
         }
 
         return coords;
+    }
+
+    inline nlohmann::json ReadFeatureCollection(const std::filesystem::path &file) {
+        std::ifstream ifs(file);
+        if (!ifs) throw std::runtime_error("ReadFeatureCollection(): cannot open \"" + file.string() + '\"');
+
+        nlohmann::json j;
+        ifs >> j;
+
+        if (!j.is_object() || !j.contains("type") || !j["type"].is_string())
+            throw std::runtime_error("ReadFeatureCollection(): top‑level object has no string 'type' field");
+
+        const std::string type = j["type"].get<std::string>();
+
+        if (type == "FeatureCollection") return j; // as‑is
+
+        if (type == "Feature") // wrap Feature
+            return nlohmann::json{{"type", "FeatureCollection"}, {"features", nlohmann::json::array({j})}};
+
+        // otherwise treat it as a bare geometry --------------------------------
+        nlohmann::json feature{
+            {"type", "Feature"}, {"geometry", j}, {"properties", nlohmann::json::object()}}; // empty props
+
+        return nlohmann::json{{"type", "FeatureCollection"}, {"features", nlohmann::json::array({feature})}};
     }
 
     inline nlohmann::json colleciton_from_field(const farmbot_interfaces::msg::Field &field) {
