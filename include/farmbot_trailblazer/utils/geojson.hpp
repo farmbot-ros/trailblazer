@@ -11,90 +11,76 @@
 #include <string>
 #include <vector>
 
-#include <geoson/geoson.hpp>
+#include <geoson/libgeojson.hpp>
+#include <nlohmann/json.hpp>
+
+#include "farmbot_interfaces/msg/field.hpp"
 
 namespace trailblazer::utils {
-    std::vector<std::vector<double>> extractFirstPolygon(const std::shared_ptr<geoson::GeoJSONObject> &obj) {
-        using ObjectType = geoson::GeoJSONObject::ObjectType;
-        using GeometryType = geoson::Geometry::Type;
+    inline std::vector<std::vector<double>> extractFirstPolygon(const nlohmann::json &fc) {
+        // must be a FeatureCollection
+        if (fc.value("type", "") != "FeatureCollection")
+            throw std::invalid_argument("input is not a FeatureCollection");
 
-        std::vector<std::vector<double>> coordinates;
+        if (fc["features"].empty()) throw std::runtime_error("FeatureCollection is empty");
 
-        if (obj->objectType() == ObjectType::FeatureCollection) {
-            auto featureCollection = std::static_pointer_cast<geoson::FeatureCollection>(obj);
-            if (!featureCollection->features().empty()) {
-                auto feature = featureCollection->features().front();
-                auto geometry = feature->geometry();
-                if (geometry && geometry->type() == GeometryType::Polygon) {
-                    auto polygon = std::static_pointer_cast<geoson::Polygon>(geometry);
-                    // Get the first ring
-                    if (!polygon->rings().empty()) {
-                        const auto &ring = polygon->rings().front();
-                        for (const auto &coord : ring) {
-                            std::vector<double> point;
-                            point.push_back(coord.y); // Latitude
-                            point.push_back(coord.x); // Longitude
-                            if (coord.hasZ()) {
-                                point.push_back(coord.z); // Altitude
-                            }
-                            coordinates.push_back(point);
-                        }
-                    } else {
-                        throw std::runtime_error("Polygon has no rings");
-                    }
-                } else {
-                    throw std::runtime_error("First feature does not contain a Polygon geometry");
-                }
-            } else {
-                throw std::runtime_error("FeatureCollection is empty");
-            }
-        } else if (obj->objectType() == ObjectType::Feature) {
-            auto feature = std::static_pointer_cast<geoson::Feature>(obj);
-            auto geometry = feature->geometry();
-            if (geometry && geometry->type() == GeometryType::Polygon) {
-                auto polygon = std::static_pointer_cast<geoson::Polygon>(geometry);
-                if (!polygon->rings().empty()) {
-                    const auto &ring = polygon->rings().front();
-                    for (const auto &coord : ring) {
-                        std::vector<double> point;
-                        point.push_back(coord.y); // Latitude
-                        point.push_back(coord.x); // Longitude
-                        if (coord.hasZ()) {
-                            point.push_back(coord.z); // Altitude
-                        }
-                        coordinates.push_back(point);
-                    }
-                } else {
-                    throw std::runtime_error("Polygon has no rings");
-                }
-            } else {
-                throw std::runtime_error("Feature does not contain a Polygon geometry");
-            }
-        } else if (obj->objectType() == ObjectType::Geometry) {
-            auto geometry = std::static_pointer_cast<geoson::Geometry>(obj);
-            if (geometry->type() == GeometryType::Polygon) {
-                auto polygon = std::static_pointer_cast<geoson::Polygon>(geometry);
-                if (!polygon->rings().empty()) {
-                    const auto &ring = polygon->rings().front();
-                    for (const auto &coord : ring) {
-                        std::vector<double> point;
-                        point.push_back(coord.y); // Latitude
-                        point.push_back(coord.x); // Longitude
-                        if (coord.hasZ()) {
-                            point.push_back(coord.z); // Altitude
-                        }
-                        coordinates.push_back(point);
-                    }
-                } else {
-                    throw std::runtime_error("Polygon has no rings");
-                }
-            } else {
-                throw std::runtime_error("Geometry is not a Polygon");
-            }
-        } else {
-            throw std::runtime_error("Unsupported GeoJSONObject type");
+        const auto &feat = fc["features"].front();
+        if (feat.value("type", "") != "Feature") throw std::runtime_error("first element is not a Feature");
+
+        const auto &geom = feat["geometry"];
+        if (geom.value("type", "") != "Polygon") throw std::runtime_error("first feature is not a Polygon");
+
+        // first ring of the polygon
+        const auto &ring = geom["coordinates"].front();
+        if (!ring.is_array() || ring.empty()) throw std::runtime_error("Polygon has no rings");
+
+        std::vector<std::vector<double>> coords;
+        coords.reserve(ring.size());
+
+        for (const auto &pt : ring) // pt is [lon, lat] or [lon, lat, alt]
+            coords.push_back(pt.get<std::vector<double>>());
+
+        // convert to [lat, lon]
+        for (auto &pt : coords) {
+            std::swap(pt[0], pt[1]);
         }
 
-        return coordinates;
+        return coords;
+    }
+
+    inline nlohmann::json colleciton_from_field(const farmbot_interfaces::msg::Field &field) {
+        nlohmann::json gs;
+        gs["type"] = "FeatureCollection";
+        gs["features"] = nlohmann::json::array();
+        for (const auto &swath : field.swaths.lines) {
+            std::string uuid = swath.uuid;
+            nlohmann::json af;
+            af["type"] = "Feature";
+            af["properties"] = {{"uuid", uuid}, {"type", "swath"}};
+            af["geometry"] = nlohmann::json::object();
+            af["geometry"]["type"] = "LineString";
+            af["geometry"]["coordinates"] = nlohmann::json::array();
+            auto lat_0 = swath.geo_line[0].x;
+            auto lon_0 = swath.geo_line[0].y;
+            auto lat_1 = swath.geo_line[1].x;
+            auto lon_1 = swath.geo_line[1].y;
+            af["geometry"]["coordinates"].push_back({lon_0, lat_0});
+            af["geometry"]["coordinates"].push_back({lon_1, lat_1});
+            gs["features"].push_back(af);
+        }
+        std::string uuid = field.border.lines[0].uuid;
+        nlohmann::json ac;
+        ac["type"] = "Feature";
+        ac["properties"] = {{"uuid", uuid}, {"type", "border"}};
+        ac["geometry"] = nlohmann::json::object();
+        ac["geometry"]["type"] = "Polygon";
+        ac["geometry"]["coordinates"] = nlohmann::json::array();
+        for (const auto &border : field.border.lines) {
+            auto lat = border.geo_line[0].x;
+            auto lon = border.geo_line[0].y;
+            ac["geometry"]["coordinates"][0].push_back({lon, lat});
+        }
+        gs["features"].push_back(ac);
+        return gs;
     }
 } // namespace trailblazer::utils

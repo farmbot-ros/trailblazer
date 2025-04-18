@@ -13,6 +13,9 @@
 #include <rclcpp/serialized_message.hpp>
 #include <std_msgs/msg/bool.hpp>
 
+#include "farmbot_trailblazer/utils/geojson.hpp"
+#include <geoson/libgeojson.hpp>
+
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
@@ -145,10 +148,16 @@ class Bidder {
 
         RCLCPP_INFO(node_->get_logger(), "Border received: %lu", fg_result->field.border.lines.size());
         RCLCPP_INFO(node_->get_logger(), "Swaths received: %lu", fg_result->field.swaths.lines.size());
+
+        nlohmann::json gsn = trailblazer::utils::colleciton_from_field(fg_result->field);
+        // std::cout << gsn.dump(4) << std::endl;
+        // geoson::op::SaveFeatureCollection("/tmp/field_g.geojson", gsn);
+
         // ------------------- Response -------------------
         response->message = "Success";
-        response->type = "farmbot_interfaces/msg/Field";
-        response->data = serialize(fg_result->field);
+        response->type = "json/Field";
+        response->data = nlohmann::json::to_cbor(gsn);
+        // response->data = serialize(fg_result->field);
     }
 };
 
