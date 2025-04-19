@@ -14,20 +14,10 @@
 #include <std_msgs/msg/bool.hpp>
 
 #include "farmbot_trailblazer/utils/geojson.hpp"
+#include "serde.hpp"
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;
-
-template <typename T> std::vector<uint8_t> serialize(const T &msg) {
-    rclcpp::Serialization<T> serializer;
-    rclcpp::SerializedMessage serialized;
-    serializer.serialize_message(&msg, &serialized);
-    auto rmw_msg = serialized.get_rcl_serialized_message();
-    size_t len = rmw_msg.buffer_length;
-    auto buf = reinterpret_cast<const uint8_t *>(rmw_msg.buffer);
-    std::vector<uint8_t> blob(buf, buf + len);
-    return blob;
-}
 
 class Bidder {
   private:
@@ -40,7 +30,7 @@ class Bidder {
     rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr beacon_sub_;
     rclcpp::Subscription<farmbot_interfaces::msg::Auction>::SharedPtr auction_sub_;
     rclcpp::Publisher<farmbot_interfaces::msg::Bid>::SharedPtr bid_pub_;
-    rclcpp::CallbackGroup::SharedPtr callback_group_;
+    rclcpp::CallbackGroup::SharedPtr callback_group_1, callback_group_2;
 
     rclcpp::Service<farmbot_interfaces::srv::Job>::SharedPtr field_gen_job_service_, field_op_job_service_;
 
@@ -61,7 +51,8 @@ class Bidder {
         beacon_sub_ = node->create_subscription<farmbot_interfaces::msg::Agent>(
             "beacon/rci", 10, std::bind(&Bidder::beacon_callback, this, _1));
 
-        callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+        callback_group_1 = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+        callback_group_2 = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         auction_sub_ = node->create_subscription<farmbot_interfaces::msg::Auction>(
             "/job/auction", 10, std::bind(&Bidder::auction_bid, this, _1));
         bid_pub_ = node->create_publisher<farmbot_interfaces::msg::Bid>("/job/bid", 10);
@@ -69,10 +60,10 @@ class Bidder {
         field_op_client_ = node->create_client<farmbot_interfaces::srv::FieldOp>("pln/field_op");
 
         field_gen_job_service_ = node->create_service<farmbot_interfaces::srv::Job>(
-            "job/field_gen", std::bind(&Bidder::field_gen_job_callback, this, _1, _2), 10, callback_group_);
+            "job/field_gen", std::bind(&Bidder::field_gen_job_callback, this, _1, _2), 10, callback_group_1);
 
         field_op_job_service_ = node->create_service<farmbot_interfaces::srv::Job>(
-            "job/field_op", std::bind(&Bidder::field_op_job_callback, this, _1, _2), 10, callback_group_);
+            "job/field_op", std::bind(&Bidder::field_op_job_callback, this, _1, _2), 10, callback_group_2);
     }
 
   private:
@@ -164,8 +155,34 @@ class Bidder {
                                std::shared_ptr<farmbot_interfaces::srv::Job::Response> response) {
         RCLCPP_INFO(node_->get_logger(), "Job [%s] assigned to [%s]", request->the_job.job_id.c_str(),
                     request->the_job.agent.name.c_str());
-        response->type = "json/FieldOp";
+
+        auto field_op_request = std::make_shared<farmbot_interfaces::srv::FieldOp::Request>();
+        for (const auto &kv : request->the_job.parameters) {
+            if (kv.key == "geojson_file") {
+                field_op_request->geojson_file = kv.value;
+                RCLCPP_INFO(node_->get_logger(), "Field request %s", field_op_request->geojson_file.c_str());
+            }
+        }
+
+        while (!field_op_client_->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(node_->get_logger(), "Interrupted while waiting for the service. Exiting.");
+                return;
+            }
+            RCLCPP_INFO(node_->get_logger(), "Service not available, waiting again...");
+        }
+        auto fg_future = field_op_client_->async_send_request(field_op_request);
+        while (rclcpp::ok() && fg_future.wait_for(1s) == std::future_status::timeout) {
+            RCLCPP_INFO(node_->get_logger(), "Waiting for response from Field service...");
+        }
+        auto fg_result = fg_future.get();
+        RCLCPP_INFO(node_->get_logger(), "Successfully recieved FieldGen service response.");
+
+        // std::vector<uint8_t> blob = serde::serialize(fg_result->field);
+        // ------------------- Response -------------------
         response->message = "Success";
+        response->type = "farmbot_interfaces/Fields";
+        // response->data = blob;
     }
 };
 

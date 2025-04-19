@@ -11,10 +11,10 @@
 #include "farmtrax/mesh.hpp"
 #include "farmtrax/plan.hpp"
 
+#include "farmbot_interfaces/msg/agent.hpp"
 #include "farmbot_interfaces/msg/line.hpp"
 #include "farmbot_interfaces/msg/lines.hpp"
 #include "farmbot_interfaces/srv/field_gen.hpp"
-#include "farmbot_interfaces/srv/field_op.hpp"
 
 #include "geometry_msgs/msg/point.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
@@ -27,7 +27,7 @@
 using namespace std::chrono_literals;
 using namespace std::placeholders;
 
-class GenLines {
+class FieldGen {
   private:
     rclcpp::Node::SharedPtr node_;
     double vehicle_coverage_ = 3.0;
@@ -43,10 +43,9 @@ class GenLines {
     rclcpp::Subscription<farmbot_interfaces::msg::Agent>::SharedPtr agent_sub_;
 
     farmbot_interfaces::msg::Lines border_msg_, swaths_msg_;
-    rclcpp::CallbackGroup::SharedPtr group_one_, group_two_;
+    rclcpp::CallbackGroup::SharedPtr group_one_;
 
     rclcpp::Service<farmbot_interfaces::srv::FieldGen>::SharedPtr field_gen_service_;
-    rclcpp::Client<farmbot_interfaces::srv::FieldOp>::SharedPtr field_client_;
 
     rclcpp::Publisher<farmbot_interfaces::msg::Lines>::SharedPtr border_pub_, swaths_pub_;
     rclcpp::TimerBase::SharedPtr self_timer_;
@@ -54,43 +53,37 @@ class GenLines {
   public:
     farmtrax::Field field_;
 
-    GenLines(rclcpp::Node::SharedPtr node) : node_(node) {
-        RCLCPP_INFO(node_->get_logger(), "GENLINES node started");
+    FieldGen(rclcpp::Node::SharedPtr node) : node_(node) {
+        RCLCPP_INFO(node_->get_logger(), "FIELDGEN node started");
         // Callback groups
-        group_two_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         group_one_ = node_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
         // Create the service
         field_gen_service_ = node_->create_service<farmbot_interfaces::srv::FieldGen>(
-            "pln/field_gen", std::bind(&GenLines::field_callback, this, _1, _2), qos_, group_one_);
+            "pln/field_gen", std::bind(&FieldGen::field_callback, this, _1, _2), qos_, group_one_);
 
-        field_client_ = node_->create_client<farmbot_interfaces::srv::FieldOp>("pln/field_msgs");
+        swaths_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
+        border_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
 
         agent_sub_ = node_->create_subscription<farmbot_interfaces::msg::Agent>(
-            "beacon/rci", 10, std::bind(&GenLines::agent_callback, this, _1));
+            "beacon/rci", 10, [this](std::shared_ptr<farmbot_interfaces::msg::Agent> msg) {
+                agent_ = *msg;
+                got_agent_ = true;
+                agent_sub_.reset();
+            });
 
-        border_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/border", 10);
-        swaths_pub_ = node_->create_publisher<farmbot_interfaces::msg::Lines>("/field/swaths", 10);
-        self_timer_ = node_->create_wall_timer(1s, std::bind(&GenLines::self_timer_callback, this));
-    }
-
-    void agent_callback(std::shared_ptr<farmbot_interfaces::msg::Agent> msg) {
-        agent_ = *msg;
-        got_agent_ = true;
-    }
-
-    void self_timer_callback() {
-        if (!planner_initialized_) {
-            return;
-        }
-        border_pub_->publish(border_msg_);
-        swaths_pub_->publish(swaths_msg_);
+        self_timer_ = node_->create_wall_timer(1s, [this]() {
+            if (!planner_initialized_) {
+                return;
+            }
+            border_pub_->publish(border_msg_);
+            swaths_pub_->publish(swaths_msg_);
+        });
     }
 
     void field_callback(std::shared_ptr<farmbot_interfaces::srv::FieldGen::Request> request,
                         std::shared_ptr<farmbot_interfaces::srv::FieldGen::Response> response) {
         if (request->geojson_file.empty()) {
             RCLCPP_ERROR(node_->get_logger(), "No geojson file specified");
-            return;
         }
 
         if (!got_agent_) {
@@ -189,33 +182,35 @@ class GenLines {
     void fill_swaths_msg(std::vector<farmtrax::Swath> swaths) {
         swaths_msg_.lines.clear();
         std::vector<std::vector<double>> local_temp;
+        std::vector<std::string> uuids;
+
         for (const auto &swath : swaths) {
-            local_temp.push_back({swath.line.front().x(), swath.line.front().y(), .0});
-            local_temp.push_back({swath.line.back().x(), swath.line.back().y(), .0});
-        }
-        auto navs = enu_to_nav(local_temp);
-        for (uint i = 0; i < navs.size(); i += 2) {
             farmbot_interfaces::msg::Line swath_msg;
+            swath_msg.uuid = swath.uuid;
+            auto front_point = concord::enu_to_gps(swath.line.front().x(), swath.line.front().y(), .0,
+                                                   agent_.zero_ref.x, agent_.zero_ref.y, agent_.zero_ref.z);
+            auto back_point = concord::enu_to_gps(swath.line.back().x(), swath.line.back().y(), .0, agent_.zero_ref.x,
+                                                  agent_.zero_ref.y, agent_.zero_ref.z);
             geometry_msgs::msg::Point geo_p1;
-            geo_p1.x = navs[i][0];
-            geo_p1.y = navs[i][1];
-            geo_p1.z = navs[i][2];
+            geo_p1.x = std::get<0>(front_point);
+            geo_p1.y = std::get<1>(front_point);
+            geo_p1.z = std::get<2>(front_point);
             swath_msg.geo_line.push_back(geo_p1);
             geometry_msgs::msg::Point geo_p2;
-            geo_p2.x = navs[i + 1][0];
-            geo_p2.y = navs[i + 1][1];
-            geo_p2.z = navs[i + 1][2];
+            geo_p2.x = std::get<0>(back_point);
+            geo_p2.y = std::get<1>(back_point);
+            geo_p2.z = std::get<2>(back_point);
             swath_msg.geo_line.push_back(geo_p2);
 
             geometry_msgs::msg::Point loc_p1;
-            loc_p1.x = navs[i][3];
-            loc_p1.y = navs[i][4];
-            loc_p1.z = navs[i][5];
+            loc_p1.x = swath.line.front().x();
+            loc_p1.y = swath.line.front().y();
+            loc_p1.z = 0.0;
             swath_msg.loc_line.push_back(loc_p1);
             geometry_msgs::msg::Point loc_p2;
-            loc_p2.x = navs[i + 1][3];
-            loc_p2.y = navs[i + 1][4];
-            loc_p2.z = navs[i + 1][5];
+            loc_p2.x = swath.line.back().x();
+            loc_p2.y = swath.line.back().y();
+            loc_p2.z = 0.0;
             swath_msg.loc_line.push_back(loc_p2);
             swaths_msg_.lines.push_back(swath_msg);
         }
@@ -229,8 +224,8 @@ int main(int argc, char *argv[]) {
     options.allow_undeclared_parameters(true);
     options.automatically_declare_parameters_from_overrides(true);
 
-    rclcpp::Node::SharedPtr genlines_node = rclcpp::Node::make_shared("genlines", options);
-    std::shared_ptr<GenLines> genlines = std::make_shared<GenLines>(genlines_node);
+    rclcpp::Node::SharedPtr genlines_node = rclcpp::Node::make_shared("fieldgen", options);
+    std::shared_ptr<FieldGen> genlines = std::make_shared<FieldGen>(genlines_node);
 
     try {
         executor.add_node(genlines_node);

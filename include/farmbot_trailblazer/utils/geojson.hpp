@@ -106,4 +106,68 @@ namespace trailblazer::utils {
         gs["features"].push_back(ac);
         return gs;
     }
+
+    inline farmbot_interfaces::msg::Field field_from_collection(const nlohmann::json &collection) {
+        farmbot_interfaces::msg::Field field;
+        // Process all features in the collection
+        for (const auto &feature : collection["features"]) {
+            // Check feature properties
+            const auto &properties = feature["properties"];
+            const auto &geometry = feature["geometry"];
+            const std::string type = properties["type"];
+            const std::string uuid = properties["uuid"];
+
+            if (type == "swath") {
+                // Process swath lines
+                farmbot_interfaces::msg::Line line;
+                line.uuid = uuid;
+
+                // Get coordinates
+                const auto &coords = geometry["coordinates"];
+                if (coords.size() >= 2) {
+                    // First point
+                    geometry_msgs::msg::Point p1;
+                    p1.x = coords[0][1]; // lat (swap from lon,lat to x,y)
+                    p1.y = coords[0][0]; // lon
+                    p1.z = 0.0;
+
+                    // Second point
+                    geometry_msgs::msg::Point p2;
+                    p2.x = coords[1][1]; // lat
+                    p2.y = coords[1][0]; // lon
+                    p2.z = 0.0;
+
+                    line.geo_line = {p1, p2};
+                    field.swaths.lines.push_back(line);
+                }
+            } else if (type == "border") {
+                // Process border polygon
+                farmbot_interfaces::msg::Line border_line;
+                border_line.uuid = uuid;
+
+                // Get polygon coordinates (first ring)
+                const auto &polygon_coords = geometry["coordinates"][0];
+
+                // Create border points
+                for (const auto &coord : polygon_coords) {
+                    geometry_msgs::msg::Point point;
+                    point.x = coord[1]; // lat (swap from lon,lat to x,y)
+                    point.y = coord[0]; // lon
+                    point.z = 0.0;
+
+                    farmbot_interfaces::msg::Line line;
+                    line.uuid = uuid;
+                    line.geo_line = {point};
+                    field.border.lines.push_back(line);
+                }
+            }
+        }
+        return field;
+    }
+
+    // Convenience function to read from file
+    inline farmbot_interfaces::msg::Field field_from_geojson_file(const std::filesystem::path &file) {
+        auto collection = ReadFeatureCollection(file);
+        return field_from_collection(collection);
+    }
 } // namespace trailblazer::utils
