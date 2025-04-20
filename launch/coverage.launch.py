@@ -25,6 +25,7 @@ def launch_setup(context, *args, **kwargs):
             yaml.safe_load(open(param_file))["global"]["ros__parameters"],
         ],
         output="screen",
+        emulate_tty=True,
     )
     nodes_array.append(bidder)
 
@@ -37,6 +38,7 @@ def launch_setup(context, *args, **kwargs):
             yaml.safe_load(open(param_file))["global"]["ros__parameters"],
         ],
         output="screen",
+        emulate_tty=True,
     )
     nodes_array.append(generate)
 
@@ -49,6 +51,7 @@ def launch_setup(context, *args, **kwargs):
             yaml.safe_load(open(param_file))["global"]["ros__parameters"],
         ],
         output="screen",
+        emulate_tty=True,
     )
     nodes_array.append(divider)
 
