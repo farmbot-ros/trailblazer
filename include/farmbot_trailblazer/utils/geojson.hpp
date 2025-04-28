@@ -21,6 +21,8 @@ namespace trailblazer::utils {
         if (fc.value("type", "") != "FeatureCollection")
             throw std::invalid_argument("input is not a FeatureCollection");
 
+        // TODO: polygon should have a parameter to specify the ring to use. SOmething like "border: true"
+
         if (fc["features"].empty()) throw std::runtime_error("FeatureCollection is empty");
 
         const auto &feat = fc["features"].front();
